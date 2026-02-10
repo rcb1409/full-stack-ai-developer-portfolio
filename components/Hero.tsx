@@ -56,6 +56,9 @@ const Hero: React.FC = () => {
           <p className="text-sm md:text-base text-slate-500 font-medium">
             Building scalable full-stack applications that integrate GenAI to solve real-world problems.
           </p>
+          <p className="mt-2 text-sm text-red-600 font-semibold animate-flash">
+            Looking for full-time opportunities starting May 2026
+          </p>
         </div>
 
         {/* Right Side: GenAI & ML */}

@@ -3,7 +3,6 @@ import React from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Projects from './components/Projects';
-import AboutMe from './components/AboutMe';
 import Experience from './components/Experience';
 import Footer from './components/Footer';
 
@@ -13,7 +12,6 @@ const App: React.FC = () => {
       <Navbar />
       <main>
         <Hero />
-        <AboutMe />
         <Experience />
         <Projects />
       </main>

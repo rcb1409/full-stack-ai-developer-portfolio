@@ -1,5 +1,5 @@
 
-import { Project, Experience, Education } from './types';
+import { Project, Experience } from './types';
 
 export const PROJECTS: Project[] = [
   {
@@ -30,22 +30,28 @@ export const PROJECTS: Project[] = [
 
 export const EXPERIENCES: Experience[] = [
   {
-    company: 'Tech Innovators Corp',
-    role: 'Software Engineer Intern',
-    period: 'Summer 2024',
-    description: 'Developed automated CI/CD pipelines and optimized database queries reducing latency by 40%. Implemented core features for the user dashboard.',
+    company: 'Department of Materials Science and Engineering, NC State University',
+    role: 'Software Engineering Research Assistant',
+    period: 'October 2025 – Present',
+    description: 'Built a research analytics platform that transformed how faculty manage publication data and conflict-of-interest compliance.',
+    bulletPoints: [
+      'Automated COI detection system processing 27 faculty, 3,605 publications, and 7,861 collaborators using graph algorithms and GenAI classification, reducing review time from 2 hours to 0.5 seconds (14,400x faster) with 98% precision, saving 200+ hours annually across the department',
+      'Optimized MySQL queries from 8-12 seconds to 6 milliseconds (1,661x improvement) through strategic indexing, materialized views, and 83% cache hit rate across 64 MB database containing 23,048 author-publication records',
+      'Engineered entity resolution pipeline consolidating 23,048 author records into 6,973 unique researchers with 96.5% matching accuracy using OpenAI IDs and ORCID cross-referencing, improving data completeness from 85% to 97.9%',
+      'Shipped full-stack news management platform (React, Node.js, MySQL) enabling 50+ faculty to independently publish content, reducing newsletter compilation time by 60% and achieving 85% adoption rate with 100+ bi-weekly subscribers'
+    ],
   },
   {
-    company: 'NCSU AI Lab',
-    role: 'Graduate Research Assistant',
-    period: 'Aug 2024 - Present',
-    description: 'Conducting research on large language models and their application in automated code review. Collaborating with PhD students on distributed training.',
+    company: 'Department of Computer Science, NC State University',
+    role: 'GenAI Research Assistant',
+    period: 'August 2025 – December 2025',
+    description: 'Developed an LLM-powered teaching assistant that provided instant, textbook-grounded answers to 65 graduate students in Object-Oriented Design course.',
+    bulletPoints: [
+      'Built RAG-powered teaching assistant using LangChain and FAISS processing 450-page textbook into 900 semantic chunks with OpenAI embeddings, delivering sub-100ms retrieval and 1.2s end-to-end response times across 450+ student queries in CSC 517 (Object-Oriented Design)',
+      'Implemented human-in-the-loop feedback system collecting 200+ student interactions with thumbs-up/down ratings and grounding verification, improving response quality from 72% to 86% positive feedback (20% improvement) through iterative retrieval optimization',
+      'Benchmarked LLM architectures (GPT-4, GPT-3.5-turbo, fine-tuned variants) demonstrating 91% of GPT-4 quality at 47% lower inference cost, enabling cost-effective deployment while maintaining high accuracy for 65 graduate students',
+      'Reduced TA routine Q&A workload by 40% (6-8 hours/week reclaimed) through automated textbook-grounded responses, allowing teaching assistants to focus on complex conceptual support while students received instant answers'
+    ]
   },
 ];
 
-export const EDUCATION: Education = {
-  institution: 'North Carolina State University',
-  degree: 'Master of Science in Computer Science',
-  period: '2024 - May 2026',
-  location: 'Raleigh, NC',
-};
