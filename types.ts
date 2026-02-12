@@ -2,9 +2,9 @@
 export interface Project {
   id: string;
   title: string;
-  category: string;
   description: string;
-  imageUrl: string;
+  /** Filename of the project image in public/projects/ (e.g. "neuralvision-dashboard.png") */
+  imageFile: string;
   tags: string[];
   link?: string;
   githubUrl?: string;

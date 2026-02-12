@@ -48,8 +48,8 @@ const Hero: React.FC = () => {
           </div>
         </div>
 
-        {/* Goal tagline */}
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 text-center max-w-5xl px-4">
+        {/* Goal tagline - positioned below the center image to avoid overlap */}
+        <div className="absolute left-1/2 -translate-x-1/2 z-30 text-center max-w-5xl px-4 top-[calc(50%+170px)] md:top-[calc(50%+270px)]">
           <p className="text-xs md:text-sm text-slate-500 font-medium whitespace-normal md:whitespace-nowrap">
             Building scalable full-stack applications that integrate GenAI to solve real-world problems.
           </p>
