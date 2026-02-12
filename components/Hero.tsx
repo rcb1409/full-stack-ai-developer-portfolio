@@ -13,24 +13,21 @@ const Hero: React.FC = () => {
         <div 
           onMouseEnter={() => setHoveredSide('left')}
           onMouseLeave={() => setHoveredSide('none')}
-          className={`relative h-full flex-1 transition-all duration-700 ease-in-out z-10 flex flex-col justify-center items-end px-12 md:px-24 overflow-hidden
+          className={`relative h-full flex-1 transition-all duration-700 ease-in-out z-10 flex flex-col justify-center items-start px-12 md:px-24 min-w-0
             ${hoveredSide === 'left' ? 'flex-[1.5]' : hoveredSide === 'right' ? 'flex-[0.5]' : 'flex-1'}
           `}
         >
-          <div className="transition-all duration-500 text-right max-w-md opacity-100 translate-x-0">
-            <h1 className="text-5xl md:text-7xl font-bold uppercase tracking-tighter mb-4">
-              <span className="flex items-center justify-end">
-                <ChevronLeft className="mr-2 text-red-600" size={40} />
-                Full Stack
-                <ChevronRight className="ml-2 text-red-600" size={40} />
-              </span>
+          <div className={`transition-all duration-500 text-left max-w-sm translate-x-0 w-full min-w-0 ${hoveredSide === 'left' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <h1 className="text-3xl md:text-4xl font-bold uppercase tracking-tighter mb-3">
+              FULL STACK ENGINEERING
             </h1>
-            <p className="text-lg md:text-xl text-slate-600 leading-relaxed font-medium">
-              I build scalable full-stack applications—from APIs and databases to polished frontends—with clean architecture and modern tooling.
+            <p className="text-base md:text-lg text-slate-600 leading-relaxed font-medium">
+            Crafting the backbone of modern web applications.
+            Focused on performance, scalability, and reliability.
             </p>
           </div>
-          {/* Subtle background color block */}
-          <div className="absolute inset-0 bg-red-50 -z-10 transition-transform duration-700 translate-x-0" />
+          {/* Subtle background color block - only visible on hover */}
+          <div className={`absolute inset-0 bg-red-50 -z-10 transition-opacity duration-500 ${hoveredSide === 'left' ? 'opacity-100' : 'opacity-0'}`} />
         </div>
 
         {/* Center Image Container */}
@@ -52,8 +49,8 @@ const Hero: React.FC = () => {
         </div>
 
         {/* Goal tagline */}
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 text-center max-w-2xl px-4">
-          <p className="text-sm md:text-base text-slate-500 font-medium">
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 text-center max-w-5xl px-4">
+          <p className="text-xs md:text-sm text-slate-500 font-medium whitespace-normal md:whitespace-nowrap">
             Building scalable full-stack applications that integrate GenAI to solve real-world problems.
           </p>
           <p className="mt-2 text-sm text-red-600 font-semibold animate-flash">
@@ -65,20 +62,21 @@ const Hero: React.FC = () => {
         <div 
           onMouseEnter={() => setHoveredSide('right')}
           onMouseLeave={() => setHoveredSide('none')}
-          className={`relative h-full flex-1 transition-all duration-700 ease-in-out z-10 flex flex-col justify-center items-start px-12 md:px-24 overflow-hidden
+          className={`relative h-full flex-1 transition-all duration-700 ease-in-out z-10 flex flex-col justify-center items-end px-12 md:px-24 overflow-hidden
             ${hoveredSide === 'right' ? 'flex-[1.5]' : hoveredSide === 'left' ? 'flex-[0.5]' : 'flex-1'}
           `}
         >
-          <div className="transition-all duration-500 text-left max-w-md opacity-100 translate-x-0">
-            <h1 className="text-5xl md:text-7xl font-bold uppercase tracking-tighter mb-4 text-slate-900">
+          <div className={`transition-all duration-500 text-right max-w-sm translate-x-0 w-full min-w-0 ${hoveredSide === 'right' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <h1 className="text-3xl md:text-4xl font-bold uppercase tracking-tighter mb-3 text-slate-900">
               GenAI <span className="text-indigo-600">&</span> ML
             </h1>
-            <p className="text-lg md:text-xl text-slate-600 leading-relaxed font-medium">
-              Passionate about generative AI and machine learning—LLMs, agents, and intelligent systems that augment how we build and ship products.
+            <p className="text-base md:text-lg text-slate-600 leading-relaxed font-medium">
+            Embedding intelligence into modern applications.
+            Focused on learning, automation, and adaptability.
             </p>
           </div>
-          {/* Subtle background color block */}
-          <div className="absolute inset-0 bg-indigo-50 -z-10 transition-transform duration-700 translate-x-0" />
+          {/* Subtle background color block - only visible on hover */}
+          <div className={`absolute inset-0 bg-indigo-50 -z-10 transition-opacity duration-500 ${hoveredSide === 'right' ? 'opacity-100' : 'opacity-0'}`} />
         </div>
       </div>
     </section>

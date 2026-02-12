@@ -7,6 +7,8 @@ export interface Project {
   imageUrl: string;
   tags: string[];
   link?: string;
+  githubUrl?: string;
+  liveUrl?: string;
 }
 
 export interface Experience {

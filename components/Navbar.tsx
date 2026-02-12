@@ -37,7 +37,7 @@ const Navbar: React.FC = () => {
           </div>
           <div className="flex items-center space-x-4 border-l pl-6 border-slate-200">
             <a href="https://github.com/rcb1409" target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-slate-900 transition-colors"><Github size={20} /></a>
-            <a href="https://www.linkedin.com/in/ravi-chandu-bollepalli/" target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-slate-900 transition-colors"><Linkedin size={20} /></a>
+            <a href="https://www.linkedin.com/in/rcbollepalli/" target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-slate-900 transition-colors"><Linkedin size={20} /></a>
             <a href="mailto:ravichandubollepalli@gmail.com" className="text-slate-500 hover:text-slate-900 transition-colors" aria-label="Email"><Mail size={20} /></a>
             <span className="self-stretch w-px bg-slate-200 min-h-[20px]" aria-hidden="true" />
             <a

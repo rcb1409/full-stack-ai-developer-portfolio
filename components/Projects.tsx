@@ -1,20 +1,14 @@
 
 import React from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { Github, ExternalLink } from 'lucide-react';
 import { PROJECTS } from '../constants';
 
 const Projects: React.FC = () => {
   return (
     <section id="projects" className="py-24 bg-slate-50">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <span className="text-red-600 font-bold uppercase tracking-widest text-sm mb-2 block">Portfolio</span>
-            <h2 className="text-4xl md:text-6xl font-bold tracking-tighter">Featured Work</h2>
-          </div>
-          <p className="max-w-md text-slate-500 text-lg">
-            A selection of projects ranging from enterprise SaaS platforms to academic AI research experiments.
-          </p>
+        <div className="mb-16">
+          <h2 className="text-4xl md:text-6xl font-bold tracking-tighter">Featured Projects</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -29,12 +23,33 @@ const Projects: React.FC = () => {
                   alt={project.title}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
-                  <div className="w-full flex justify-between items-center text-white">
-                    <span className="font-medium">{project.category}</span>
-                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
-                      <ArrowUpRight size={20} />
-                    </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-center items-center gap-3 p-6">
+                  <span className="text-white font-medium text-sm uppercase tracking-wider">{project.category}</span>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    {project.githubUrl && (
+                      <a
+                        href={project.githubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md text-white text-sm font-semibold hover:bg-white/30 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Github size={18} />
+                        GitHub
+                      </a>
+                    )}
+                    {project.liveUrl && (
+                      <a
+                        href={project.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md text-white text-sm font-semibold hover:bg-white/30 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink size={18} />
+                        Live Demo
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>

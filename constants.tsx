@@ -9,6 +9,7 @@ export const PROJECTS: Project[] = [
     description: 'A real-time object detection and tracking dashboard built with PyTorch and React, optimized for high-performance edge computing.',
     imageUrl: 'https://picsum.photos/seed/ai-vision/800/500',
     tags: ['PyTorch', 'React', 'FastAPI', 'WebSockets'],
+    githubUrl: 'https://github.com',
   },
   {
     id: '2',
@@ -17,6 +18,7 @@ export const PROJECTS: Project[] = [
     description: 'Cloud-native content delivery platform for independent creators with built-in analytics and automated transcoding.',
     imageUrl: 'https://picsum.photos/seed/fullstack/800/500',
     tags: ['Next.js', 'PostgreSQL', 'AWS S3', 'Stripe'],
+    githubUrl: 'https://github.com',
   },
   {
     id: '3',
