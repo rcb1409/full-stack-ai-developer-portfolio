@@ -1,0 +1,194 @@
+---
+title: "1,661x MySQL Query Optimization: From 8-12 Seconds to 6ms"
+date: "2026-03-15"
+project: mse-news-portal
+tags: [MySQL, Performance, Indexing, SQL, Database]
+summary: "A step-by-step account of diagnosing and fixing catastrophically slow MySQL queries on a 64MB research database — using EXPLAIN, strategic indexing, and materialized views to drop response times from 10 seconds to 6ms."
+---
+
+The MSE research platform had a query problem. Loading the faculty analytics dashboard took 8-12 seconds. On a database with 23,048 author records and 3,605 publications, that's not a data volume problem — it's a query design problem.
+
+This is the exact process I used to find the bottleneck and eliminate it.
+
+## Step 1: Understand the query
+
+The dashboard loaded publication data for each faculty member, joining across multiple tables:
+
+```sql
+SELECT 
+  f.id,
+  f.name,
+  f.email,
+  COUNT(DISTINCT p.id) AS publication_count,
+  COUNT(DISTINCT c.collaborator_id) AS collaborator_count,
+  MAX(p.year) AS latest_publication
+FROM faculty f
+LEFT JOIN author_publications ap ON f.id = ap.faculty_id
+LEFT JOIN publications p ON ap.publication_id = p.id
+LEFT JOIN collaborations c ON f.id = c.faculty_id
+GROUP BY f.id, f.name, f.email
+ORDER BY publication_count DESC;
+```
+
+At a glance this looks fine. The issue only appears when you understand the data:
+- `author_publications`: 23,048 rows
+- `publications`: 3,605 rows
+- `collaborations`: 7,861 rows
+- No indexes on any foreign key columns
+
+## Step 2: EXPLAIN ANALYZE
+
+```sql
+EXPLAIN ANALYZE
+SELECT f.id, f.name, ...
+FROM faculty f
+LEFT JOIN author_publications ap ON f.id = ap.faculty_id
+...
+```
+
+Output (abbreviated):
+```
+-> Sort (cost=18432.12 rows=27) (actual time=9847.23..9847.24 rows=27)
+  -> Table scan on faculty (cost=2.80 rows=27)
+    -> Hash join (cost=5231.40 rows=23048)
+      -> Table scan on author_publications (cost=231.48 rows=23048)
+      -> Hash join (cost=361.22 rows=3605)
+        -> Table scan on publications (cost=36.05 rows=3605)
+        -> Table scan on collaborations (cost=78.61 rows=7861)
+```
+
+**Full table scans on all three joined tables.** The database is reading every single row in every table on every request. With 27 faculty members hitting this endpoint, that's 27 × 34,514 rows scanned per page load.
+
+## Step 3: Add indexes on join columns
+
+The fix seems obvious in hindsight: indexes on foreign keys.
+
+```sql
+-- Indexes on join conditions
+CREATE INDEX idx_ap_faculty_id ON author_publications(faculty_id);
+CREATE INDEX idx_ap_publication_id ON author_publications(publication_id);
+CREATE INDEX idx_collab_faculty_id ON collaborations(faculty_id);
+CREATE INDEX idx_pub_year ON publications(year);
+
+-- Composite index for the common access pattern
+CREATE INDEX idx_ap_faculty_pub ON author_publications(faculty_id, publication_id);
+```
+
+After re-running `EXPLAIN ANALYZE`:
+```
+-> Sort (actual time=142.31..142.32 rows=27)
+  -> Index scan on faculty
+    -> Nested loop join using idx_ap_faculty_id
+    -> Nested loop join using idx_collab_faculty_id
+```
+
+Query time: **142ms**. Down from 10,000ms. But the dashboard loaded every 30 seconds for 15+ concurrent faculty members, so 142ms was still too slow.
+
+## Step 4: Materialized view for aggregate data
+
+The root cause of the remaining slowness: aggregates (`COUNT(DISTINCT ...)`, `MAX(...)`) are computed fresh on every query. These numbers change rarely — publication counts update when a faculty member adds a paper, not on every dashboard load.
+
+The solution: a materialized view that pre-computes the aggregates.
+
+```sql
+CREATE TABLE faculty_stats_cache (
+  faculty_id INT PRIMARY KEY,
+  publication_count INT NOT NULL DEFAULT 0,
+  collaborator_count INT NOT NULL DEFAULT 0,
+  latest_publication_year INT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE CASCADE
+);
+
+-- Populate on startup
+INSERT INTO faculty_stats_cache (faculty_id, publication_count, collaborator_count, latest_publication_year)
+SELECT 
+  f.id,
+  COUNT(DISTINCT ap.publication_id),
+  COUNT(DISTINCT c.collaborator_id),
+  MAX(p.year)
+FROM faculty f
+LEFT JOIN author_publications ap ON f.id = ap.faculty_id
+LEFT JOIN publications p ON ap.publication_id = p.id
+LEFT JOIN collaborations c ON f.id = c.faculty_id
+GROUP BY f.id
+ON DUPLICATE KEY UPDATE
+  publication_count = VALUES(publication_count),
+  collaborator_count = VALUES(collaborator_count),
+  latest_publication_year = VALUES(latest_publication_year),
+  updated_at = CURRENT_TIMESTAMP;
+```
+
+The dashboard query becomes:
+
+```sql
+SELECT f.id, f.name, f.email, s.publication_count, s.collaborator_count, s.latest_publication_year
+FROM faculty f
+JOIN faculty_stats_cache s ON f.id = s.faculty_id
+ORDER BY s.publication_count DESC;
+```
+
+Result: **6ms**. The query now does two indexed scans on small tables — faculty (27 rows) and the cache (27 rows).
+
+## Step 5: Cache invalidation
+
+The cache needs to stay current. I added triggers that refresh a faculty member's stats when their publication data changes:
+
+```sql
+DELIMITER //
+CREATE TRIGGER refresh_faculty_stats_after_publication
+AFTER INSERT ON author_publications
+FOR EACH ROW
+BEGIN
+  CALL refresh_faculty_stats(NEW.faculty_id);
+END //
+DELIMITER ;
+```
+
+Where `refresh_faculty_stats` is a stored procedure that recomputes the single row for that faculty member:
+
+```sql
+CREATE PROCEDURE refresh_faculty_stats(IN p_faculty_id INT)
+BEGIN
+  INSERT INTO faculty_stats_cache (faculty_id, publication_count, collaborator_count, latest_publication_year)
+  SELECT 
+    f.id,
+    COUNT(DISTINCT ap.publication_id),
+    COUNT(DISTINCT c.collaborator_id),
+    MAX(p.year)
+  FROM faculty f
+  LEFT JOIN author_publications ap ON f.id = ap.faculty_id
+  LEFT JOIN publications p ON ap.publication_id = p.id
+  LEFT JOIN collaborations c ON f.id = c.faculty_id
+  WHERE f.id = p_faculty_id
+  GROUP BY f.id
+  ON DUPLICATE KEY UPDATE
+    publication_count = VALUES(publication_count),
+    collaborator_count = VALUES(collaborator_count),
+    latest_publication_year = VALUES(latest_publication_year),
+    updated_at = CURRENT_TIMESTAMP;
+END;
+```
+
+The trigger recomputes only the affected faculty member's stats, not the entire table — making updates fast even as the dataset grows.
+
+## Final numbers
+
+| Metric | Before | After |
+|---|---|---|
+| Dashboard query time | 8,000-12,000ms | 6ms |
+| Improvement | — | **1,661x** |
+| Cache hit rate | 0% | 83% |
+| Index count | 0 | 6 |
+| Concurrent users supported | ~3 | 50+ |
+
+## Key takeaways
+
+**Run EXPLAIN ANALYZE before touching any production query.** The output shows exactly which tables are being scanned and why — guessing is slower and often wrong.
+
+**Index every foreign key used in a JOIN.** This is standard practice but often skipped in early development. The performance cliff appears gradually as data grows.
+
+**Aggregate data that changes rarely.** Publication counts don't change on every page load. Pre-computing them in a cache table (with trigger-based invalidation) eliminates the most expensive operations entirely.
+
+**Measure the cache hit rate.** An 83% cache hit rate means 83% of queries hit the fast path. The remaining 17% are cache misses on direct faculty lookups — acceptable given the workload.

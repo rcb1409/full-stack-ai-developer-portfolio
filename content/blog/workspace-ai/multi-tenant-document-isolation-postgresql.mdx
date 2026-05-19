@@ -1,0 +1,153 @@
+---
+title: "Multi-Tenant Document Storage: Workspace Isolation with PostgreSQL and Row-Level Security"
+date: "2026-04-05"
+project: workspace-ai
+tags: [PostgreSQL, Multi-Tenancy, Security, Node.js, System Design]
+summary: "How workspaceAI ensures one user's uploaded documents are never accessible to another — using PostgreSQL Row-Level Security, workspace-scoped embedding namespaces, and signed S3 URLs."
+---
+
+The hardest problem in building workspaceAI wasn't the AI — it was isolation. When a user uploads a confidential contract PDF, they need a guarantee that no other user's queries can surface that content, even accidentally.
+
+This post covers the three-layer isolation model I built: database RLS, vector store namespacing, and file storage access control.
+
+## The threat model
+
+In a multi-tenant RAG system, cross-tenant data leakage can happen in three places:
+
+1. **Database queries** — a bug returns another user's document metadata
+2. **Vector search** — retrieval pulls embeddings from another workspace's documents
+3. **File storage** — direct file URLs are guessable or cacheable across users
+
+All three need to be locked down independently. Defense in depth.
+
+## Layer 1: PostgreSQL Row-Level Security
+
+The schema has a `workspaces` table with an `owner_id` foreign key, and a `documents` table with a `workspace_id` foreign key:
+
+```sql
+CREATE TABLE workspaces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  s3_key TEXT NOT NULL,
+  chunk_count INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+RLS ensures application-layer bugs can't bypass the access control:
+
+```sql
+ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+-- Workspace policy: only owner can read/write
+CREATE POLICY workspace_isolation ON workspaces
+  USING (owner_id = current_setting('app.current_user_id')::UUID);
+
+-- Document policy: only documents in workspaces the user owns
+CREATE POLICY document_isolation ON documents
+  USING (
+    workspace_id IN (
+      SELECT id FROM workspaces
+      WHERE owner_id = current_setting('app.current_user_id')::UUID
+    )
+  );
+```
+
+Before every query, the Node.js API sets the session variable:
+
+```typescript
+await db.query(`SET LOCAL app.current_user_id = '${userId}'`)
+const result = await db.query('SELECT * FROM documents WHERE workspace_id = $1', [workspaceId])
+```
+
+Even if `workspaceId` belongs to another user, RLS blocks the query at the database level.
+
+## Layer 2: Vector store namespacing
+
+FAISS doesn't natively support multi-tenancy. My approach: a separate FAISS index per workspace, stored in S3 with a path prefix keyed on the workspace ID:
+
+```
+s3://bucket/vectorstores/{workspace_id}/index.faiss
+s3://bucket/vectorstores/{workspace_id}/index.pkl
+```
+
+When a user queries a workspace, the API loads only that workspace's index:
+
+```python
+def load_workspace_vectorstore(workspace_id: str) -> FAISS:
+    local_path = f"/tmp/vectorstores/{workspace_id}"
+    
+    # Download from S3 if not cached locally
+    if not os.path.exists(local_path):
+        s3.download_file(BUCKET, f"vectorstores/{workspace_id}/index.faiss", ...)
+        s3.download_file(BUCKET, f"vectorstores/{workspace_id}/index.pkl", ...)
+    
+    return FAISS.load_local(local_path, embeddings, allow_dangerous_deserialization=True)
+```
+
+This means retrieval is physically scoped — there's no shared index that could return cross-tenant results.
+
+The tradeoff: loading a workspace's index from S3 adds ~200ms on cache miss. I mitigate this with an in-process LRU cache keyed on workspace ID, evicting least-recently-used indexes when memory pressure is high.
+
+## Layer 3: Signed S3 URLs
+
+Raw S3 object URLs are permanent and guessable if the bucket isn't locked down. Instead, all file downloads go through the API, which generates time-limited signed URLs:
+
+```typescript
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+
+async function getDocumentDownloadUrl(s3Key: string, userId: string): Promise<string> {
+  // Verify ownership before generating URL
+  const doc = await db.query(
+    'SELECT d.id FROM documents d JOIN workspaces w ON d.workspace_id = w.id WHERE d.s3_key = $1 AND w.owner_id = $2',
+    [s3Key, userId]
+  )
+  
+  if (doc.rows.length === 0) throw new Error('Unauthorized')
+  
+  const command = new GetObjectCommand({ Bucket: BUCKET, Key: s3Key })
+  return getSignedUrl(s3Client, command, { expiresIn: 300 }) // 5 minutes
+}
+```
+
+The signed URL expires in 5 minutes, so a leaked URL can't be used to access documents indefinitely.
+
+## What the complete request flow looks like
+
+```
+User sends chat message in Workspace A
+  ↓
+API middleware verifies JWT, extracts userId
+  ↓
+SET LOCAL app.current_user_id = userId (RLS armed)
+  ↓
+Verify workspace ownership (RLS blocks unauthorized access)
+  ↓
+Load workspace A's FAISS index (LRU cache miss → S3 fetch)
+  ↓
+Vector similarity search against workspace A's embeddings only
+  ↓
+Retrieved chunks passed to LLM with grounding prompt
+  ↓
+Response streamed back to user
+```
+
+At no point can Workspace A's retrieval touch Workspace B's embeddings, documents, or files — each layer enforces isolation independently.
+
+## Lessons learned
+
+**RLS is not enough alone.** RLS protects against SQL injection and application bugs, but not against a compromised vector store that was built from all tenants' documents. You need the namespaced vector store too.
+
+**Cache carefully.** The LRU cache for FAISS indexes creates a potential timing attack — if an attacker can infer which workspace's index is cached, they learn something about other users' activity. I rate-limit workspace loads per user to mitigate this.
+
+**Test isolation explicitly.** I wrote integration tests that create two users, upload different documents to each, then verify that querying as user A never returns any chunks from user B's documents, even with identical queries. These tests caught one early bug where a shared embedding namespace was being used across workspaces.

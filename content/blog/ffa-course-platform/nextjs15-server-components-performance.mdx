@@ -1,0 +1,209 @@
+---
+title: "Cutting JavaScript Bundle Size by 35% with Next.js 15 Server Components"
+date: "2026-01-05"
+project: ffa-course-platform
+tags: [Next.js 15, Server Components, Performance, TypeScript, React]
+summary: "How migrating data-fetching and static UI to React Server Components reduced the FFA platform's client-side JavaScript by 35%, improved LCP, and eliminated loading skeletons from most pages."
+---
+
+When I first shipped the FFA course platform, the bundle was 340KB of client-side JavaScript. For a nonprofit's course site serving students on mixed-quality connections, that's too heavy. After migrating to Server Components strategically, it dropped to 221KB — a 35% reduction — with measurable LCP improvements.
+
+This post covers which components I migrated, which I kept as client components, and the patterns that made the difference.
+
+## The wrong mental model for Server Components
+
+When React Server Components launched, the common advice was "make everything a server component by default, add 'use client' only when needed." This sounds right but leads to a problem: you end up with a root server component that imports deeply nested client components, and Next.js has to figure out where to draw the serialization boundary.
+
+The better mental model: **server components own data fetching and static rendering; client components own interactivity and state**.
+
+Draw the boundary at the lowest component that actually needs browser APIs, event handlers, or state. Everything above that can stay server-side.
+
+## What I migrated to server components
+
+### Course catalog
+
+The course catalog page was a client component that fetched from Firestore on mount:
+
+```typescript
+// Before: client component
+'use client'
+import { useEffect, useState } from 'react'
+import { collection, getDocs } from 'firebase/firestore'
+
+export default function CourseCatalog() {
+  const [courses, setCourses] = useState([])
+  const [loading, setLoading] = useState(true)
+  
+  useEffect(() => {
+    getDocs(collection(db, 'courses')).then(snap => {
+      setCourses(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      setLoading(false)
+    })
+  }, [])
+  
+  if (loading) return <CourseSkeleton />
+  return <CourseGrid courses={courses} />
+}
+```
+
+After migration:
+
+```typescript
+// After: server component
+import { adminDb } from '@/lib/firebase-admin'
+import CourseGrid from '@/components/CourseGrid'
+
+export default async function CourseCatalog() {
+  const snap = await adminDb.collection('courses').get()
+  const courses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  
+  return <CourseGrid courses={courses} />
+}
+```
+
+**Wins**: No `useEffect`, no loading skeleton, no client-side Firestore SDK (removed ~45KB from the bundle), instant render with data.
+
+### Course detail page
+
+Same pattern — moved Firestore reads to the server, kept only the enrollment button as a client component:
+
+```typescript
+// app/courses/[courseId]/page.tsx
+export default async function CoursePage({ params }: { params: { courseId: string } }) {
+  const [course, enrollment] = await Promise.all([
+    getCourse(params.courseId),
+    getUserEnrollment(userId, params.courseId),
+  ])
+  
+  return (
+    <div>
+      <CourseHeader course={course} />         {/* Server component */}
+      <CourseModules modules={course.modules} /> {/* Server component */}
+      <EnrollButton                              {/* Client component */}
+        courseId={course.id}
+        isEnrolled={enrollment !== null}
+      />
+    </div>
+  )
+}
+```
+
+The `EnrollButton` is the only client component on this page — it needs `onClick`, Firebase client SDK for the enrollment write, and optimistic UI state. Everything else is static content that renders on the server.
+
+### Admin dashboard
+
+The admin dashboard was the biggest win. Before: a single giant client component with 6 `useEffect` calls fetching different metrics. After: a server component that fetches everything in parallel:
+
+```typescript
+export default async function AdminDashboard() {
+  const [users, courses, enrollments, events] = await Promise.all([
+    adminDb.collection('users').count().get(),
+    adminDb.collection('courses').get(),
+    adminDb.collection('enrollments').get(),
+    adminDb.collection('events').orderBy('date', 'desc').limit(5).get(),
+  ])
+  
+  return (
+    <Dashboard
+      userCount={users.data().count}
+      courses={courses.docs.map(d => d.data())}
+      enrollmentCount={enrollments.size}
+      recentEvents={events.docs.map(d => d.data())}
+    />
+  )
+}
+```
+
+`Dashboard` receives serialized data and renders statically — no client JavaScript for the display layer.
+
+## What stayed as client components
+
+Not everything can be a server component. I kept client components for:
+
+**Quiz player** — tracks question state, animations, timer, and submits answers. Deeply stateful.
+
+**Progress tracker** — updates in real-time as a student completes modules. Uses `onSnapshot` for live Firestore updates.
+
+**Rich text editor** (admin course builder) — needs browser APIs for the editing surface.
+
+**Mobile navigation** — uses `useState` for open/closed state.
+
+The pattern: if a component needs `useState`, `useEffect`, event handlers, or browser APIs — it's a client component. Otherwise, it's a server component.
+
+## Multi-layer caching for dynamic data
+
+Server components run on every request by default. For data that doesn't change frequently, I added caching:
+
+```typescript
+// Revalidate course catalog every 60 seconds
+export const revalidate = 60
+
+export default async function CourseCatalog() {
+  const courses = await getCourses() // Cached for 60s
+  return <CourseGrid courses={courses} />
+}
+```
+
+For user-specific data (enrollment status, progress), I kept full dynamic rendering — caching user data across requests would be a security issue.
+
+For frequently read, rarely updated data (course content, module structure), I used `unstable_cache`:
+
+```typescript
+import { unstable_cache } from 'next/cache'
+
+const getCachedCourse = unstable_cache(
+  async (courseId: string) => {
+    const snap = await adminDb.collection('courses').doc(courseId).get()
+    return snap.data()
+  },
+  ['course'],
+  { revalidate: 300 } // 5 minutes
+)
+```
+
+## Zustand for client state that persists across navigation
+
+Some client state needs to survive page navigation without re-fetching from Firestore. I used Zustand with `localStorage` persistence for the progress tracker:
+
+```typescript
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+interface ProgressStore {
+  completedModules: Record<string, boolean>
+  markComplete: (moduleId: string) => void
+}
+
+export const useProgressStore = create<ProgressStore>()(
+  persist(
+    (set) => ({
+      completedModules: {},
+      markComplete: (moduleId) =>
+        set((state) => ({
+          completedModules: { ...state.completedModules, [moduleId]: true },
+        })),
+    }),
+    { name: 'course-progress' }
+  )
+)
+```
+
+The progress updates write to both Zustand (immediate, optimistic) and Firestore (debounced, 2 seconds). Navigation between course modules is instant because the progress state is local — no waiting for Firestore reads.
+
+## Bundle size breakdown
+
+| Change | Bundle reduction |
+|---|---|
+| Removed client-side firebase/app, firebase/firestore | -45KB |
+| Removed useEffect-based data fetching hooks | -18KB |
+| Removed loading skeleton components | -8KB |
+| Smaller component tree (server components not bundled) | -48KB |
+| **Total** | **-119KB (35%)** |
+
+The biggest single win was removing the client-side Firestore SDK. Admin reads now go through the Firebase Admin SDK on the server — no client-side credentials exposed, no SDK download required.
+
+## LCP improvement
+
+Lighthouse measured LCP improvement from 3.4s to 2.1s on a 4G throttled connection. The reason: pages now arrive with content already rendered — no loading skeletons, no waiting for client-side Firestore reads to resolve before anything displays.
+
+For a nonprofit's course platform where many students are on mobile data, this matters.

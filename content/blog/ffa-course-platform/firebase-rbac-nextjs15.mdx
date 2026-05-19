@@ -1,0 +1,203 @@
+---
+title: "Role-Based Access Control with Firebase Admin SDK and Next.js 15 Middleware"
+date: "2026-01-18"
+project: ffa-course-platform
+tags: [Firebase, Next.js, Auth, RBAC, TypeScript, Security]
+summary: "How I secured 13+ protected routes across student and admin roles in the FFA course platform using Firebase custom claims, JWT verification in Next.js middleware, and server-side session management."
+---
+
+The FFA course platform has two distinct user types: students who enroll in courses and track progress, and admins who create content, manage enrollments, and view analytics. Getting this wrong means either exposing admin functionality to students, or blocking admins from the tools they need.
+
+This is the complete RBAC implementation — from Firebase custom claims to Next.js middleware to server component authorization.
+
+## The architecture decision: Firebase custom claims vs. Firestore roles
+
+There are two common approaches to Firebase RBAC:
+
+**Option A**: Store roles in Firestore, check on every request
+```typescript
+// Every protected route does this:
+const userDoc = await db.collection('users').doc(userId).get()
+const role = userDoc.data()?.role
+if (role !== 'admin') return redirect('/unauthorized')
+```
+
+**Option B**: Store roles in JWT custom claims, verify server-side
+
+The problem with Option A: every route check requires a Firestore read. With 13+ protected routes and 300+ users, that's a lot of reads, and Firestore bills per read.
+
+Option B encodes the role in the JWT itself. Verification is a cryptographic operation — no network call, no billing.
+
+I chose Option B.
+
+## Setting custom claims with Firebase Admin SDK
+
+Custom claims are set server-side when an admin grants a role:
+
+```typescript
+import { getAuth } from 'firebase-admin/auth'
+
+export async function setAdminRole(userId: string): Promise<void> {
+  await getAuth().setCustomUserClaims(userId, { role: 'admin' })
+}
+
+export async function setStudentRole(userId: string): Promise<void> {
+  await getAuth().setCustomUserClaims(userId, { role: 'student' })
+}
+```
+
+Claims are embedded in the user's next JWT. The client must refresh their token to pick up the new role:
+
+```typescript
+// Client-side: force token refresh after role change
+await getAuth().currentUser?.getIdToken(true)  // forceRefresh = true
+```
+
+## Verifying the JWT in Next.js middleware
+
+Next.js 15 middleware runs at the edge before any route handler or server component. This is where I verify the token and enforce role requirements:
+
+```typescript
+// middleware.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getAuth } from 'firebase-admin/auth'
+import { initAdminApp } from '@/lib/firebase-admin'
+
+initAdminApp()
+
+const ADMIN_ROUTES = ['/admin', '/admin/courses', '/admin/users', '/admin/analytics']
+const STUDENT_ROUTES = ['/dashboard', '/courses', '/profile']
+const PUBLIC_ROUTES = ['/', '/login', '/signup', '/about']
+
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+  
+  // Skip public routes
+  if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+    return NextResponse.next()
+  }
+  
+  // Extract the session cookie (Firebase ID token stored as HttpOnly cookie)
+  const sessionCookie = request.cookies.get('session')?.value
+  
+  if (!sessionCookie) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+  
+  try {
+    const decoded = await getAuth().verifySessionCookie(sessionCookie, true)
+    const role = decoded.role as string | undefined
+    
+    // Admin route guard
+    if (ADMIN_ROUTES.some(route => pathname.startsWith(route))) {
+      if (role !== 'admin') {
+        return NextResponse.redirect(new URL('/unauthorized', request.url))
+      }
+    }
+    
+    // Inject user identity into headers for downstream server components
+    const response = NextResponse.next()
+    response.headers.set('x-user-id', decoded.uid)
+    response.headers.set('x-user-role', role ?? 'student')
+    return response
+    
+  } catch {
+    // Invalid or expired token
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.delete('session')
+    return response
+  }
+}
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+}
+```
+
+## Session cookies vs. ID tokens
+
+A subtle but important point: I'm using **Firebase session cookies**, not ID tokens.
+
+Firebase ID tokens expire after 1 hour, requiring the client to refresh. In a server-rendered Next.js app, there's no clean way to refresh an expired token server-side mid-request.
+
+Firebase session cookies can be configured with longer TTLs (up to 2 weeks) and support server-side revocation via `getAuth().revokeRefreshTokens(uid)`. This is the right choice for a server-rendered app.
+
+Creating a session cookie after login:
+
+```typescript
+// API route: /api/auth/session
+export async function POST(request: NextRequest) {
+  const { idToken } = await request.json()
+  
+  // Verify the ID token first
+  await getAuth().verifyIdToken(idToken)
+  
+  // Create a session cookie with 7-day expiry
+  const expiresIn = 60 * 60 * 24 * 7 * 1000 // 7 days in ms
+  const sessionCookie = await getAuth().createSessionCookie(idToken, { expiresIn })
+  
+  const response = NextResponse.json({ status: 'ok' })
+  response.cookies.set('session', sessionCookie, {
+    maxAge: expiresIn / 1000,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+  })
+  
+  return response
+}
+```
+
+## Reading user identity in server components
+
+Because middleware injects `x-user-id` and `x-user-role` headers, server components can read the current user without another Firebase call:
+
+```typescript
+// app/dashboard/page.tsx
+import { headers } from 'next/headers'
+
+export default async function Dashboard() {
+  const headersList = await headers()
+  const userId = headersList.get('x-user-id')!
+  const role = headersList.get('x-user-role')!
+  
+  // Load user-specific data from Firestore
+  const enrollments = await getUserEnrollments(userId)
+  
+  return <DashboardView enrollments={enrollments} role={role} />
+}
+```
+
+No client-side Firebase calls, no loading states, no auth context providers. The server component already knows who the user is before it renders.
+
+## Admin route: double-checking at the component level
+
+Middleware provides the first layer of protection. Server components add a second layer — defense in depth:
+
+```typescript
+// app/admin/page.tsx
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+export default async function AdminDashboard() {
+  const headersList = await headers()
+  const role = headersList.get('x-user-role')
+  
+  // Middleware should have already blocked non-admins, but verify anyway
+  if (role !== 'admin') redirect('/unauthorized')
+  
+  const stats = await getAdminStats()
+  return <AdminDashboardView stats={stats} />
+}
+```
+
+## What this architecture gets right
+
+**Zero Firestore reads for authorization.** Every auth check is a JWT verification — fast, free, and cacheable.
+
+**Server-side role enforcement.** Even if a client somehow bypasses the middleware (impossible in practice, but good to design against), the server component re-checks the role.
+
+**Instant revocation.** Calling `getAuth().revokeRefreshTokens(uid)` + `getAuth().revokeSessionCookie(sessionCookie)` immediately blocks a compromised account — the next request to any protected route fails the `verifySessionCookie(cookie, true)` check (the `true` flag forces revocation check).
+
+**No client-side auth state.** There's no `AuthContext`, no `useAuth` hook, no auth loading state. The page either renders (authenticated) or redirects (not authenticated) — no flickering, no flash of unauthenticated content.
