@@ -10,7 +10,7 @@ export default function Hero() {
     <section className="relative h-screen w-full overflow-hidden bg-white flex items-center justify-center pt-20">
       <div className="relative w-full h-full max-w-[1440px] flex group">
 
-        {/* Left Side: Full Stack Developer */}
+        {/* Left Side: AI Agent Systems */}
         <div
           onMouseEnter={() => setHoveredSide('left')}
           onMouseLeave={() => setHoveredSide('none')}
@@ -24,11 +24,11 @@ export default function Hero() {
             }`}
           >
             <h1 className="text-3xl md:text-4xl font-bold uppercase tracking-tighter mb-3 font-heading">
-              FULL STACK ENGINEERING
+              AI AGENT SYSTEMS
             </h1>
             <p className="text-base md:text-lg text-slate-600 leading-relaxed font-medium">
-              Crafting the backbone of modern web applications. Focused on performance, scalability,
-              and reliability.
+              Building ReAct agents with tool use, sub-agent delegation, and persistent memory.
+              From prototype to production.
             </p>
           </div>
           <div
@@ -43,7 +43,7 @@ export default function Hero() {
           <div className="relative w-full h-full rounded-full overflow-hidden border-[12px] border-white shadow-2xl transition-transform duration-500 group-hover:scale-105">
             <Image
               src="/portfolio.png"
-              alt="Ravi Bollepalli — Full Stack & GenAI Developer"
+              alt="Ravi Bollepalli — AI Engineer"
               fill
               className={`object-cover transition-all duration-700 ease-in-out
                 ${hoveredSide === 'left' ? 'scale-110 -translate-x-4 grayscale' : hoveredSide === 'right' ? 'scale-110 translate-x-4 hue-rotate-180' : 'scale-100'}
@@ -66,15 +66,14 @@ export default function Hero() {
         {/* Tagline below image */}
         <div className="absolute left-1/2 -translate-x-1/2 z-30 text-center max-w-5xl px-4 top-[calc(50%+170px)] md:top-[calc(50%+270px)]">
           <p className="text-xs md:text-sm text-slate-500 font-medium whitespace-normal md:whitespace-nowrap">
-            Building scalable full-stack applications that integrate GenAI to solve real-world
-            problems.
+            Building production AI agents, RAG pipelines, and LLM evaluation systems.
           </p>
           <p className="mt-2 text-sm text-red-600 font-semibold animate-flash">
-            Looking for full-time opportunities starting May 2026
+            Looking for entry-level AI Engineer roles — available May 2026
           </p>
         </div>
 
-        {/* Right Side: GenAI & ML */}
+        {/* Right Side: LLM Ops & Evals */}
         <div
           onMouseEnter={() => setHoveredSide('right')}
           onMouseLeave={() => setHoveredSide('none')}
@@ -83,16 +82,16 @@ export default function Hero() {
           `}
         >
           <div
-            className={`transition-all duration-500 text-right max-w-sm translate-x-0 w-full min-w-0 ${
+            className={`transition-all duration-500 text-right max-w-xs translate-x-0 w-full min-w-0 ${
               hoveredSide === 'right' ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
           >
             <h1 className="text-3xl md:text-4xl font-bold uppercase tracking-tighter mb-3 text-slate-900 font-heading">
-              GenAI <span className="text-indigo-600">&</span> ML
+              LLM OPS <span className="text-indigo-600">&</span> EVALS
             </h1>
             <p className="text-base md:text-lg text-slate-600 leading-relaxed font-medium">
-              Embedding intelligence into modern applications. Focused on learning, automation, and
-              adaptability.
+              Shipping RAG systems, evaluation pipelines, and model-tier routing with measurable
+              quality benchmarks.
             </p>
           </div>
           <div

@@ -26,7 +26,7 @@ export default function Projects() {
             return (
               <div
                 key={project.slug}
-                className="group bg-white rounded-3xl overflow-hidden border border-slate-200 hover:shadow-2xl hover:shadow-red-500/10 transition-all duration-500 flex flex-col"
+                className="group bg-white rounded-3xl overflow-hidden border border-slate-200 hover:shadow-2xl hover:shadow-red-500/10 transition-shadow duration-500 flex flex-col"
               >
                 {/* Image */}
                 <Link href={`/projects/${project.slug}`} className="relative overflow-hidden aspect-[4/3] block">
@@ -34,7 +34,7 @@ export default function Projects() {
                     src={project.imageFile}
                     alt={project.title}
                     fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-110"
+                    className="object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
                     <span className="inline-flex items-center gap-2 text-white text-sm font-semibold">
