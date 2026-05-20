@@ -20,6 +20,7 @@ export interface BlogPost extends BlogPostMeta {
 const BLOG_DIR = path.join(process.cwd(), 'content/blog')
 
 function getFilePath(slug: string): string | null {
+  if (!fs.existsSync(BLOG_DIR)) return null
   const projectDirs = fs.readdirSync(BLOG_DIR)
   for (const dir of projectDirs) {
     const candidate = path.join(BLOG_DIR, dir, `${slug}.mdx`)
@@ -29,6 +30,8 @@ function getFilePath(slug: string): string | null {
 }
 
 export function getAllPosts(): BlogPostMeta[] {
+  if (!fs.existsSync(BLOG_DIR)) return []
+
   const posts: BlogPostMeta[] = []
   const projectDirs = fs.readdirSync(BLOG_DIR)
 

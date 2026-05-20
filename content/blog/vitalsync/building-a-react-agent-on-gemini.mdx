@@ -1,0 +1,132 @@
+---
+title: "Building a Production ReAct Agent on Gemini 2.5 Flash"
+date: "2026-03-18"
+project: "vitalsync"
+tags: ["Agents", "ReAct", "Gemini", "LLM Ops"]
+summary: "How I wired up a 4-tool ReAct loop on Gemini 2.5 Flash, classified semantic vs. system errors to avoid retry storms, and built an LLM-as-judge eval suite that caught regressions before users did."
+---
+
+When I started VitalSync, I thought the hard part would be the AI. It wasn't. The hard part was making it *reliable* — knowing when the model was confused versus when a downstream API was down, and being able to prove the agent was still answering well after every change.
+
+Here's what actually mattered.
+
+## The ReAct Loop
+
+The agent follows a standard ReAct pattern: **Reason → Act → Observe → repeat** until it has enough to answer.
+
+Each turn, Gemini 2.5 Flash receives the conversation history plus a tool manifest. It emits either a `tool_call` block or a final response. When it calls a tool, the server executes it, appends the result, and hands control back to the model.
+
+```
+User query
+  └─► Gemini 2.5 Flash (reason)
+        └─► tool_call: { name: "get_vitals", args: {...} }
+              └─► Tool executor
+                    └─► Observation appended to context
+                          └─► Gemini 2.5 Flash (reason again)
+                                └─► Final answer
+```
+
+Four tools are registered:
+
+| Tool | What it does |
+|---|---|
+| `get_vitals` | Fetches latest biometric readings from the health data service |
+| `search_history` | Semantic search over the user's historical logs |
+| `get_recommendations` | Pulls evidence-based guidance for a given metric |
+| `log_entry` | Writes a new observation to the user's journal |
+
+Routing is just the model deciding which tool fits — no classifier, no intent detection layer. Gemini handles it well out of the box when the tool descriptions are specific.
+
+## The Error Classification Problem
+
+Early on, every tool failure looked the same: the agent would apologize and ask the user to try again. That was bad for two reasons:
+
+1. **Semantic errors** (the model asked for data that doesn't exist) should be handled by reasoning differently — not retrying.
+2. **System errors** (HTTP 500, timeout) should trigger a retry, not an apology.
+
+I added a thin classification layer at the tool executor boundary:
+
+```typescript
+function classifyError(err: ToolError): 'semantic' | 'system' {
+  if (err.status >= 500 || err.code === 'TIMEOUT') return 'system'
+  if (err.status === 404 || err.code === 'NOT_FOUND') return 'semantic'
+  if (err.status === 422) return 'semantic'
+  return 'system' // default: assume retriable
+}
+```
+
+System errors get a structured observation back to the model: `"Tool failed due to a transient error. You may retry once."` — which lets Gemini decide whether to retry or tell the user there's an issue.
+
+Semantic errors get a richer observation: `"No vitals recorded for this date range. Consider asking about a different period."` — which steers the reasoning rather than triggering a pointless retry.
+
+This killed the retry storm problem completely.
+
+## TTL-Scoped Memory
+
+The agent needs to remember facts within a session (what the user mentioned five turns ago) but must not bleed state across sessions.
+
+I implemented async TTL-scoped memory extraction after each assistant turn:
+
+```typescript
+async function extractMemory(
+  sessionId: string,
+  turn: ConversationTurn
+): Promise<void> {
+  const facts = await extractFacts(turn) // LLM call, non-blocking
+  await redis.setex(
+    `memory:${sessionId}`,
+    SESSION_TTL_SECONDS,
+    JSON.stringify(facts)
+  )
+}
+```
+
+The extraction runs fire-and-forget — it doesn't block the response. On the next turn, the agent retrieves the session facts and prepends them as a `system` message before the conversation history.
+
+TTL is set to 4 hours. After that, the session is cold and the agent starts fresh. No cross-user leakage, no stale context from yesterday's session.
+
+## LLM-as-Judge Eval Suite
+
+This was the part that actually improved the agent's quality over time.
+
+I maintain a 50-question golden set: question + expected behavior (not always an exact answer, sometimes a rubric like "must mention BMI trend" or "must not recommend medication changes").
+
+After every meaningful change, a CI step runs all 50 questions through the agent and sends each (question, response, rubric) triple to a judge prompt:
+
+```
+You are evaluating a health AI agent's response.
+
+Question: {question}
+Agent response: {response}
+Evaluation rubric: {rubric}
+
+Score 0–3:
+  3 = Fully satisfies the rubric
+  2 = Mostly satisfies, minor gap
+  1 = Partially satisfies
+  0 = Fails or contradicts the rubric
+
+Return JSON: { "score": <int>, "reason": "<one sentence>" }
+```
+
+The suite reports a pass rate. Anything below 85% blocks the deploy. Right now we're consistently at 92–96%.
+
+The most valuable thing this caught: after I changed the `get_recommendations` tool schema, the agent started ignoring the `confidence` field and giving unhedged recommendations. Score dropped to 78%. Found it before any user saw it.
+
+## Observability with Helicone
+
+Every Gemini call is proxied through Helicone. This gives me:
+
+- **Per-user token usage** — so I can see if one user is hammering the agent and burning budget
+- **Latency percentiles** — p50, p95, p99 per tool and per final response
+- **Cache hit rate** — system prompts are stable, so I get good cache hits on the prefix
+
+The most useful dashboard: tool call frequency over time. When `get_vitals` calls spiked 3× one evening, it turned out a bug was causing the agent to re-fetch vitals on every turn instead of using the session memory. Caught it in 10 minutes because the chart was right there.
+
+## What I'd Do Differently
+
+**Start with evals earlier.** I added the judge suite halfway through. The first two weeks of "it feels better" would have been much more rigorous with a score to watch.
+
+**Tool descriptions are load-bearing.** I rewrote them three times. Vague descriptions cause the model to guess wrong about which tool to use. Specific, action-oriented descriptions ("Fetches the 7 most recent biometric readings for the current user") work much better than generic ones.
+
+**Don't swallow system errors silently.** The error classification work paid back immediately. Every production agent needs this layer — the model will happily retry into a downed service 10 times if you let it.
