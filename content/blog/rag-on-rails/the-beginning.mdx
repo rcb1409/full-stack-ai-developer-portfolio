@@ -1,0 +1,33 @@
+---
+title: "The Beginning"
+date: "2026-06-29T12:00:00"
+project: "rag-on-rails"
+tags: ["RAG", "Retrieval", "Vector Database", "Embeddings", "Multi-Hop"]
+summary: "Why my two previous attempts at building a RAG pipeline stalled, and how finding the right dataset finally gave this project a solid foundation to stand on."
+---
+
+This is not my first time trying to build a RAG pipeline. I have tried a couple of times before.
+
+The first time, I was just trying to understand the different parts involved in a RAG pipeline, so the focus was not on building a pipeline that works the best. It was about understanding each part, starting from ingesting documents, converting them into embeddings, and storing them in a vector database where we index them, and then retrieving them when we need something. So the focus was about getting those parts right.
+
+## Second Brain
+
+The next time I tried, I was being very ambitious. I tried to build a thing called **Second Brain**, where I ingested all my chats from different AI tools like Claude and ChatGPT. I also pulled in IDEs like Cursor and Antigravity, as I was using multiple chats. The idea was to build a second brain where, when I ask a question, it tries to answer from already fetched documents, almost like a memory.
+
+Instead of building the baseline right, I was trying to build a complex setup. I don't remember it exactly, but it involved things like **episodic memory**, where you store the memory, and you also run an LLM to retrieve parts and add them to the metadata, so that the next time you fetch, it reads that too. As far as I remember, I didn't build it fully, but it was complex.
+
+## The Real Bottleneck: No Ground Truth
+
+The real bottleneck I faced was the data. I had a working pipeline, but I didn't know what to measure it against.
+
+If I needed to make it better, I should have had a reference, like a **golden dataset** where, for a given question, these are the chunks required and this is the answer that we need. I didn't have that, so I stopped there.
+
+My focus then shifted to first finding a good dataset for retrieval, so that when I build the pipeline this time, I would have something to measure against and see how different parts in the RAG pipeline contribute to the final retrieval metrics.
+
+## Finding the Right Dataset
+
+While I was searching for a dataset, I also didn't want it to be very simple. If you can answer a question by fetching one or two chunks from the top five chunks, that is basic retrieval, at least the way I thought about it.
+
+That is when I came across a **multi-hop dataset**, where to answer a specific question you might require more than two or three chunks to answer it accurately. Also, for some of the questions, only if you know the answer for one part of the question will you be able to get the answer for the second part.
+
+I felt this dataset was tricky enough to try to build a RAG pipeline on, and that is where this project began.

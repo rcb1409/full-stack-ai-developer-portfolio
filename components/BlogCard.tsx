@@ -15,6 +15,7 @@ export default function BlogCard({ post }: { post: BlogPostMeta }) {
             year: 'numeric',
             month: 'short',
             day: 'numeric',
+            timeZone: 'UTC',
           })}
         </time>
         <span className="text-slate-300">·</span>

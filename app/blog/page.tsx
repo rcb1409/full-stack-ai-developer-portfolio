@@ -21,11 +21,11 @@ export default function BlogIndex() {
           {/* Header */}
           <div className="mb-16">
             <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-4 font-heading">
-              Blog
+              Technical Blocks
             </h1>
             <p className="text-lg text-slate-500 max-w-xl">
-              Technical write-ups from building real projects — RAG pipelines, database
-              optimization, Firebase RBAC, and more.
+              Documenting technical blocks while explaining through the decisions I made building
+              the projects, rooted in what I observed.
             </p>
           </div>
 

@@ -1,0 +1,52 @@
+---
+title: "Metrics"
+date: "2026-07-01T12:00:00"
+project: "rag-on-rails"
+tags: ["RAG", "Retrieval Metrics", "Evaluation", "MultiHop-RAG", "Hits@k", "MRR", "MAP"]
+summary: "Breaking down the retrieval metrics that drive every experiment in this project and why verbatim gold facts make fully reproducible measurement possible."
+---
+
+Before explaining any metric, it is worth being precise about what the dataset actually gives you, because the metrics are only meaningful relative to what you measure them against.
+
+Each question in MultiHop-RAG comes with three things: the question itself, which is the input to the retriever and generator; a short answer string, which is the ground truth for generation; and an evidence_list, which is the ground truth for retrieval. The evidence_list is the important one. These golden facts are not summaries or paraphrases. They are the exact sentences as they appear in the source articles, verbatim strings that are confirmed to be substrings of the source text.
+
+That verbatim property is what makes the whole measurement approach work. Most public QA datasets only give you the gold answer, which forces you to use an LLM as a judge to decide whether a retrieved chunk was useful, and that introduces model bias and noise. With verbatim gold facts I can check mechanically: does this chunk contain this exact string? No LLM, no judgment calls, fully reproducible.
+
+Most questions have 2 to 4 golden facts, and they are spread across different articles. That is the structural property that makes this a multi-hop benchmark. A retriever might find the first golden fact easily, since it is semantically close to the question, but the second or third fact often sits in a chunk that is only weakly connected to the query's surface form.
+
+## Why retrieval metrics come first
+
+The scorecard has two phases, retrieval and generation. I started with retrieval, and that ordering was deliberate. Generation quality is bounded by retrieval quality: if the correct evidence is not in the retrieved chunks, no amount of prompt engineering or model capability will produce the right answer.
+
+There is also a cost argument. Evaluating retrieval is essentially free since it is just string matching on data I already have, and running retrieval-only on 300 questions takes seconds. Evaluating generation requires Bedrock calls for both generation and judging, which takes minutes and costs money. So the iteration loop for retrieval experiments is much tighter.
+
+## The metrics
+
+**Hits@k** answers the simplest question: did we get anything useful at all? A question scores a hit at depth k if at least one of its golden facts appears as a substring in any of the top-k chunks. I track Hits@4 and Hits@10. k=4 is a strict sanity check, and k=10 is the primary operating cutoff since that is the number of chunks actually passed to the generator.
+
+**FactRecall@k** gives partial credit. Instead of asking whether you found any gold fact, it asks what fraction you found within top-k. A question with 3 gold facts where the retriever found 2 scores 0.67. When FactRecall@10 diverges from Hits@10 it is diagnostic: the retriever is finding some evidence but missing the harder bridging facts.
+
+**AllGold@k** is the strictest coverage metric. A question only gets credit if every golden fact was found within top-k, and partial coverage scores zero. AllGold@10 is the primary scorecard metric for this project because the whole point of using a multi-hop dataset is to stress the retriever's ability to gather distributed evidence. The baseline dense retriever scores 18.6%, which means that for roughly 4 out of 5 multi-hop questions at least one piece of evidence was missing from the context. That is the gap every later experiment is trying to close.
+
+**MRR@k** captures where the first relevant result lands. The score is 1 divided by the rank of the first chunk that contains any gold fact. This matters because a generator that reads chunks in rank order weights earlier chunks more heavily. MRR is also a good reranker diagnostic: a reranker should push relevant chunks up, so even if Hits@10 stays flat, MRR should rise.
+
+**MAP@k** ties position and completeness together. Every time a chunk contributes a new gold fact it adds new_facts divided by current_rank to a running sum, and the average precision for the question is that sum divided by the number of gold facts. It rewards finding all the facts and finding them early.
+
+## How they fit together
+
+| Metric | What it asks | What it catches | What it misses |
+| --- | --- | --- | --- |
+| Hits@4 | Any gold fact in top-4? | Complete retrieval failures | Completeness and ordering |
+| Hits@10 | Any gold fact in top-10? | Whether the generator saw any evidence | Completeness or ordering |
+| FactRecall@10 | What fraction of gold facts in top-10? | Partial retrieval, bridging facts missed | Position quality |
+| AllGold@10 | All gold facts in top-10? | Incomplete evidence chains | Position quality |
+| MRR@10 | Where does the first hit land? | Poor ordering, relevant chunk buried late | Completeness |
+| MAP@10 | All facts found, and found early? | Incomplete coverage and poor ordering | Little, most comprehensive single number |
+
+## A note on null queries
+
+Null queries are excluded from all retrieval metrics. They are unanswerable by design and have no evidence_list, so including them would make every retriever look worse regardless of its actual quality.
+
+## Generation metrics, coming next
+
+The second phase covers what happens after retrieval: deterministic metrics like Exact Match, Token F1, and abstention accuracy on unanswerable questions, plus LLM-judge metrics via ragas such as Faithfulness, Context Precision, Context Recall, and Answer Correctness. That is a separate discussion and will be added once the generation evaluation is finalized.

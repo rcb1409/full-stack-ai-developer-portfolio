@@ -10,7 +10,7 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
         <div className="text-sm">
           © {currentYear} Designed and developed by{' '}
-          <span className="text-white font-bold">ravibollepalli.dev</span>
+          <span className="text-white font-bold">ravibollepalli.me</span>
         </div>
 
         <nav className="flex items-center space-x-8 text-xs font-black uppercase tracking-widest">

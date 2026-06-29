@@ -30,7 +30,7 @@ export default function Navbar() {
           href="/"
           className="text-2xl font-bold tracking-tighter hover:opacity-70 transition-opacity font-heading"
         >
-          ravibollepalli<span className="text-red-600">.</span>dev
+          ravibollepalli<span className="text-red-600">.</span>me
         </Link>
 
         {/* Desktop */}

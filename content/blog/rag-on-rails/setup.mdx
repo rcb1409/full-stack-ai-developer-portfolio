@@ -1,0 +1,43 @@
+---
+title: "Setup"
+date: "2026-06-30T12:00:00"
+project: "rag-on-rails"
+tags: ["RAG", "MultiHop-RAG", "ChromaDB", "Embeddings", "YAML", "Pydantic", "Controlled Experiments"]
+summary: "How I structured the RAG pipeline as a controlled experiment, one variable at a time, with YAML configs, Pydantic validation, and a naming convention that makes the scorecard self-explanatory."
+---
+
+Coming to the setup, I wanted to build it in such a way that if I vary a single variable, like chunk size, I should be able to see the effect it has on the metrics while keeping everything else the same. That way I can figure out how different configurations and strategies in a RAG pipeline affect its overall metrics. That was the idea.
+
+To start off, I wanted to build a baseline setup quickly, so that once the baseline is in place I can start building from there.
+
+## The Dataset
+
+The dataset is **MultiHop-RAG** (yixuantt/MultiHopRAG on HuggingFace), which is designed specifically for multi-hop reasoning, where answering a question requires connecting evidence across two or more passages. That is what makes retrieval genuinely hard here: a single semantically similar chunk is rarely enough.
+
+The dataset has somewhere around 1,500 questions, spread across different categories that includes inference, comparison, temporal and null (unanswerable) types. Running every indexing experiment on the full dataset would need a lot of compute and time, so to test things out I set up a dev dataset of around 300 questions, a stratified sample that includes questions from all the categories almost equally. I also created a small smoke dataset of just 50 questions to quickly try things out when needed.
+
+## The Embedding Model
+
+For the embedding model, it needed to be optimized for retrieval, where the query and the passage differ in length and nature. This is called **asymmetric retrieval**. Most general-purpose embedders are trained on symmetric similarity, on pairs of similar sentences, which is not what retrieval actually is.
+
+In retrieval, a short question like "who founded this company?" needs to match a long paragraph that may never use those exact words but still contains the answer. The embedding space has to handle that mismatch well, so I picked a baseline embedding model built for this.
+
+## The Vector Database
+
+For the vector database, I went with **ChromaDB**, running locally and persisting to disk. The reasons were practical rather than architectural. I wanted something that persists across runs without a separate server process, that is metadata-aware so I can store the article ID and chunk position alongside the vector, and that I can query directly to debug why a chunk was or wasn't retrieved.
+
+ChromaDB gave me persistent collections keyed by name, so I could use one collection per experiment config, along with metadata filters and idempotent upserts, which means re-running ingestion doesn't double-index.
+
+## YAML Configs
+
+Each configuration is a single YAML file, so that you can understand all the settings for an experiment in one interpretable place without reading any code. The config is organized by pipeline layer, covering the dataset, chunking, embeddings, vector store, retrieval, generation, and evaluation, each owning its own settings.
+
+I used Python to parse these files into the actual setup, with **Pydantic** models validating them. If I write a config with an invalid retrieval mode or a missing field, I get a clear error at startup instead of a confusing failure halfway through a 300-question run.
+
+## Naming Convention
+
+The naming convention is what actually enforces the controlled experiments. Each filename describes the single thing that changed from the baseline, like `chunk_cs256`, where only the chunk size is 256, or `sparse_only_v1`, where only the retrieval mode is sparse. So when I look at the scorecard later and see that `chunk_cs256` performed worse than baseline, I know exactly what caused it, with no confounding variable to untangle.
+
+## Reproducibility
+
+One more thing the YAML buys me is reproducibility. Every run copies its config file into the run directory alongside the results, so six months later I can pick any run from the scorecard, open its config, and recreate the exact conditions that produced those numbers. The config is both the experiment description and the reproduction recipe.

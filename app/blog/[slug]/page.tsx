@@ -3,6 +3,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { ArrowLeft, Clock, Calendar } from 'lucide-react'
 import { MDXRemote } from 'next-mdx-remote/rsc'
+import remarkGfm from 'remark-gfm'
 import { getAllPostSlugs, getPost } from '@/lib/blog'
 import { getProject } from '@/lib/projects'
 import Footer from '@/components/Footer'
@@ -97,7 +98,7 @@ export default async function BlogPostPage({
 
           {/* MDX content */}
           <article className="prose prose-slate prose-lg max-w-none">
-            <MDXRemote source={post.content} />
+            <MDXRemote source={post.content} options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }} />
           </article>
 
           {/* Footer nav */}

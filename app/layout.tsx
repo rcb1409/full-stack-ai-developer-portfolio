@@ -18,7 +18,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: {
     template: '%s | Ravi Bollepalli',
-    default: 'Ravi Bollepalli — Full Stack & GenAI Developer',
+    default: 'Ravi Bollepalli',
   },
   description:
     'Full-stack engineer and GenAI developer building scalable applications that integrate AI to solve real-world problems.',

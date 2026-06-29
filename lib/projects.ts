@@ -21,16 +21,18 @@ export const PROJECTS: Project[] = [
     tags: ['React', 'Express', 'TypeScript', 'Prisma', 'AWS', 'Terraform', 'Gemini 2.5 Flash', 'Helicone'],
     liveUrl: 'https://vitalsync.ravibollepalli.me/',
   },
-  {
-    slug: 'second-brain',
-    title: 'Second Brain: Conversational RAG Chatbot',
-    description:
-      'Local-first RAG chatbot unifying 4,954 conversations into a 312K-chunk pgvector knowledge base — improved retrieval recall from 0.58 to 0.85 on a 50-question eval set.',
-    longDescription:
-      'Built a local-first RAG chatbot that ingests 4,954 personal conversations into a 312K-chunk pgvector knowledge base. Improved retrieval recall from 0.58 to 0.85 on a 50-question eval set through context engineering. Runs LLM ops on AWS Bedrock with model-tier routing to balance cost and quality. Evaluation pipeline uses LLM-as-Judge for automated regression testing across retrieval and generation quality.',
-    imageFile: '/projects/second-brain.png',
-    tags: ['Python', 'PyTorch', 'Hugging Face', 'PostgreSQL', 'pgvector', 'AWS Bedrock', 'LLM-as-Judge'],
-  },
+  
+    {
+      slug: 'rag-on-rails',
+      title: 'RAG-on-Rails: Controlled-Experiment RAG Benchmark',
+      description:
+        'From-scratch RAG benchmark with a single-variable harness across 10 ablations on MultiHop-RAG, lifting Recall@5 from 0.52 to 0.81 and answer correctness from 0.49 to 0.72.',
+      longDescription:
+        'Built a from-scratch RAG benchmarking pipeline with a controlled-experiment harness that isolates one variable at a time across 10 ablations on MultiHop-RAG (2,556 questions). Lifted Recall@5 from 0.52 to 0.81 using hybrid dense + BM25 retrieval, a cross-encoder reranker, and LLM-based query decomposition. Raised answer correctness from 0.49 to 0.72, measured by a 12-metric RAGAS suite that separates retrieval quality from generation quality, with a Claude Sonnet judge and tracing via Arize Phoenix.',
+      imageFile: '/projects/rag-on-rails.png',
+      tags: ['Python', 'BM25', 'Dense Retrieval', 'Cross-Encoder Reranker', 'RAGAS', 'Arize Phoenix', 'Claude Sonnet', 'MultiHop-RAG'],
+      liveUrl: 'https://ragonrails/ravibollepalli/rag-on-rails',
+    },
   {
     slug: 'miniclaw',
     title: 'MiniClaw: Self-Hosted AI Agent',

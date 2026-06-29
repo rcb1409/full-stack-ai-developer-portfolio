@@ -59,12 +59,14 @@ export function getAllPosts(): BlogPostMeta[] {
   }
 
   return posts.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   )
 }
 
 export function getPostsByProject(projectSlug: string): BlogPostMeta[] {
-  return getAllPosts().filter((p) => p.project === projectSlug)
+  return getAllPosts()
+    .filter((p) => p.project === projectSlug)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 }
 
 export function getPost(slug: string): BlogPost | null {
