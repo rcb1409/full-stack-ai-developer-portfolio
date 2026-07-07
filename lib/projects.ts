@@ -29,7 +29,7 @@ export const PROJECTS: Project[] = [
         'From-scratch RAG benchmark with a single-variable harness across 10 ablations on MultiHop-RAG, lifting Recall@5 from 0.52 to 0.81 and answer correctness from 0.49 to 0.72.',
       longDescription:
         'Built a from-scratch RAG benchmarking pipeline with a controlled-experiment harness that isolates one variable at a time across 10 ablations on MultiHop-RAG (2,556 questions). Lifted Recall@5 from 0.52 to 0.81 using hybrid dense + BM25 retrieval, a cross-encoder reranker, and LLM-based query decomposition. Raised answer correctness from 0.49 to 0.72, measured by a 12-metric RAGAS suite that separates retrieval quality from generation quality, with a Claude Sonnet judge and tracing via Arize Phoenix.',
-      imageFile: '/projects/rag-on-rails.png',
+      imageFile: '/projects/rag-on-rails-cover.svg',
       tags: ['Python', 'BM25', 'Dense Retrieval', 'Cross-Encoder Reranker', 'RAGAS', 'Arize Phoenix', 'Claude Sonnet', 'MultiHop-RAG'],
       liveUrl: 'https://ragonrails/ravibollepalli/rag-on-rails',
     },

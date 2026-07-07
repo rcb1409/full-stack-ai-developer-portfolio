@@ -1,0 +1,121 @@
+<svg viewBox="0 0 1600 830" xmlns="http://www.w3.org/2000/svg" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#0E1524"/>
+      <stop offset="0.55" stop-color="#0A0F1B"/>
+      <stop offset="1" stop-color="#070A12"/>
+    </linearGradient>
+    <radialGradient id="vign" cx="0.78" cy="0.28" r="0.85">
+      <stop offset="0" stop-color="#1B2740" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#1B2740" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rail" x1="670" y1="674" x2="1400" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7A6026"/>
+      <stop offset="0.5" stop-color="#D6A93F"/>
+      <stop offset="1" stop-color="#F7D268"/>
+    </linearGradient>
+    <linearGradient id="gnode" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F7D268"/>
+      <stop offset="1" stop-color="#D8A73C"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDev="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDev="13"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1600" height="830" fill="url(#bg)"/>
+  <rect width="1600" height="830" fill="url(#vign)"/>
+
+  <!-- left column: identity -->
+  <text x="92" y="298" fill="#6E7C93" font-size="16" letter-spacing="3" font-weight="600" font-family="'SF Mono','Menlo','Consolas',monospace">CONTROLLED-EXPERIMENT BENCHMARK</text>
+  <text x="90" y="404" fill="#EEF1F6" font-size="88" font-weight="800" letter-spacing="-1">RAG <tspan fill="#75839B" font-weight="400">on</tspan></text>
+  <text x="90" y="494" fill="#EEF1F6" font-size="88" font-weight="800" letter-spacing="-1">Rails</text>
+  <rect x="94" y="528" width="88" height="5" rx="2.5" fill="url(#gnode)"/>
+  <text x="92" y="612" fill="#7C8AA0" font-size="22" font-family="'SF Mono','Menlo','Consolas',monospace">Every piece of evidence</text>
+  <text x="92" y="644" fill="#7C8AA0" font-size="22" font-family="'SF Mono','Menlo','Consolas',monospace">a hard question needs.</text>
+  <text x="92" y="700" fill="#4C5872" font-size="15" letter-spacing="2" font-family="'SF Mono','Menlo','Consolas',monospace">ALLGOLD@10 &#183; MULTIHOP-RAG</text>
+
+  <!-- faint divider -->
+  <line x1="556" y1="200" x2="556" y2="680" stroke="#26324A" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- corpus: dim chunks -->
+  <g fill="#28344A">
+    <rect x="620" y="210" width="100" height="28" rx="7" opacity="0.34"/>
+    <rect x="766" y="210" width="100" height="28" rx="7" opacity="0.24"/>
+    <rect x="912" y="210" width="100" height="28" rx="7" opacity="0.40"/>
+    <rect x="1058" y="210" width="100" height="28" rx="7" opacity="0.28"/>
+    <rect x="1204" y="210" width="100" height="28" rx="7" opacity="0.22"/>
+
+    <rect x="620" y="300" width="100" height="28" rx="7" opacity="0.30"/>
+    <rect x="766" y="300" width="100" height="28" rx="7" opacity="0.38"/>
+    <rect x="912" y="300" width="100" height="28" rx="7" opacity="0.24"/>
+    <rect x="1058" y="300" width="100" height="28" rx="7" opacity="0.40"/>
+    <rect x="1350" y="300" width="100" height="28" rx="7" opacity="0.28"/>
+
+    <rect x="620" y="390" width="100" height="28" rx="7" opacity="0.22"/>
+    <rect x="766" y="390" width="100" height="28" rx="7" opacity="0.38"/>
+    <rect x="912" y="390" width="100" height="28" rx="7" opacity="0.30"/>
+    <rect x="1204" y="390" width="100" height="28" rx="7" opacity="0.34"/>
+    <rect x="1350" y="390" width="100" height="28" rx="7" opacity="0.24"/>
+
+    <rect x="620" y="480" width="100" height="28" rx="7" opacity="0.40"/>
+    <rect x="766" y="480" width="100" height="28" rx="7" opacity="0.28"/>
+    <rect x="1058" y="480" width="100" height="28" rx="7" opacity="0.22"/>
+    <rect x="1204" y="480" width="100" height="28" rx="7" opacity="0.38"/>
+    <rect x="1350" y="480" width="100" height="28" rx="7" opacity="0.30"/>
+
+    <rect x="620" y="570" width="100" height="28" rx="7" opacity="0.34"/>
+    <rect x="912" y="570" width="100" height="28" rx="7" opacity="0.24"/>
+    <rect x="1058" y="570" width="100" height="28" rx="7" opacity="0.40"/>
+    <rect x="1204" y="570" width="100" height="28" rx="7" opacity="0.28"/>
+    <rect x="1350" y="570" width="100" height="28" rx="7" opacity="0.22"/>
+
+    <rect x="766" y="660" width="100" height="28" rx="7" opacity="0.38"/>
+    <rect x="912" y="660" width="100" height="28" rx="7" opacity="0.30"/>
+    <rect x="1058" y="660" width="100" height="28" rx="7" opacity="0.24"/>
+    <rect x="1204" y="660" width="100" height="28" rx="7" opacity="0.40"/>
+    <rect x="1350" y="660" width="100" height="28" rx="7" opacity="0.34"/>
+  </g>
+
+  <!-- the rail: evidence chain climbing through the corpus -->
+  <path d="M670 674 L816 584 L962 494 L1108 404 L1254 314 L1400 224"
+        fill="none" stroke="url(#rail)" stroke-width="10" stroke-linejoin="round"
+        stroke-linecap="round" opacity="0.5" filter="url(#softglow)"/>
+  <path d="M670 674 L816 584 L962 494 L1108 404 L1254 314 L1400 224"
+        fill="none" stroke="url(#rail)" stroke-width="3.5" stroke-linejoin="round"
+        stroke-linecap="round"/>
+
+  <!-- found-evidence chunks (gold), brightening as the chain completes -->
+  <g>
+    <rect x="620" y="660" width="100" height="28" rx="7" fill="url(#gnode)" opacity="0.55"/>
+    <rect x="766" y="570" width="100" height="28" rx="7" fill="url(#gnode)" opacity="0.64"/>
+    <rect x="912" y="480" width="100" height="28" rx="7" fill="url(#gnode)" opacity="0.73"/>
+    <rect x="1058" y="390" width="100" height="28" rx="7" fill="url(#gnode)" opacity="0.82"/>
+    <rect x="1204" y="300" width="100" height="28" rx="7" fill="url(#gnode)" opacity="0.91"/>
+    <rect x="1350" y="210" width="100" height="28" rx="7" fill="url(#gnode)" opacity="1"/>
+  </g>
+
+  <!-- node stops -->
+  <g filter="url(#glow)">
+    <circle cx="670" cy="674" r="9" fill="#F2C557" opacity="0.7"/>
+    <circle cx="816" cy="584" r="9" fill="#F2C557" opacity="0.78"/>
+    <circle cx="962" cy="494" r="9" fill="#F4C95E" opacity="0.86"/>
+    <circle cx="1108" cy="404" r="10" fill="#F5CE62" opacity="0.92"/>
+    <circle cx="1254" cy="314" r="10" fill="#F7D268" opacity="0.97"/>
+    <circle cx="1400" cy="224" r="12" fill="#FBDC7E"/>
+  </g>
+
+  <!-- anchor numbers: the coverage climb -->
+  <g font-family="'SF Mono','Menlo','Consolas',monospace">
+    <text x="612" y="748" fill="#9AA6BC" font-size="40" font-weight="600">18.6%</text>
+    <text x="614" y="776" fill="#5F6C82" font-size="16" letter-spacing="2">DENSE BASELINE</text>
+
+    <text x="1494" y="150" text-anchor="end" fill="#F7D268" font-size="56" font-weight="700">49.2%</text>
+    <text x="1494" y="178" text-anchor="end" fill="#B79753" font-size="16" letter-spacing="2">AGENTIC RETRIEVAL</text>
+  </g>
+</svg>
