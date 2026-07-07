@@ -1,0 +1,90 @@
+---
+title: "The Experiments"
+date: "2026-07-08T12:00:00"
+project: "rag-on-rails"
+summary: "Thirty experiments across nine groups, each changing one variable at a time, to find what actually moves AllGold@10. The path from 18.6% to 39.8% was not the one I expected."
+---
+
+The goal here was to test how each component in the RAG pipeline affects the retrieval metrics. That came to 30 experiments across 9 groups, where every run changes one variable versus its predecessor and measures the effect on AllGold@10, the fraction of questions where all supporting evidence was retrieved. That is the primary scorecard metric for multi-hop retrieval, and this is where the one-knob discipline from the setup pays off: when a number moves, there is exactly one thing that moved it. Everything below runs on the 299-question dev set, and the baseline is 18.6%, dense retrieval, bge-small, k=10.
+
+## Does retrieving more chunks help?
+
+The first question after the baseline was the obvious one: does retrieving more chunks help? I ran top_k at 3, 5, 10, 20, and 50, with everything else identical. At k=3 and k=5 the context is starved, and AllGold@10 sits at 4.6% and 8.0%. At k=10 we are back to the baseline 18.6%. Then at k=20 and k=50, Hits@k keeps climbing, which means the gold facts do exist in the corpus and the model ranks them somewhere in the top 50, but AllGold@10 doesn't move at all. It stays at 18.6%.
+
+That is the useful finding. The evidence is not missing from the corpus. Plain dense retrieval just isn't ranking it highly enough to land in the first 10 results that actually reach the generator. A wider window doesn't fix that. Better retrieval does, and that is the lever the rest of the experiments pull on.
+
+## Smaller chunks
+
+Smaller chunks are a common retrieval recommendation, more granular units and fewer false positives, and 256 tokens is the setting the original MultiHop-RAG paper used. So the chunk_size sweep tested 128, 256, and 450. Both smaller sizes came out worse. cs=128 lost 4.6 points of AllGold@10, and cs=256 matched the baseline on AllGold@10 but with lower Hits@10 and MRR, meaning it finds the right evidence less often and ranks it lower when it does.
+
+The reason is the substring match. The gold facts are verbatim sentences from the articles, and at 128 tokens the chunker frequently splits a sentence across a boundary, putting half of a fact in one chunk and half in the next, so neither chunk alone passes the match. The 450-token baseline keeps most full sentences intact. That said, the difference for 256 was not that much, so I still kept the 256 chunk size as a candidate for future tests, because a smaller chunk might help the generation step by giving the LLM a more focused context to work with.
+
+## A bigger embedding model
+
+Next, does a larger embedding model help, holding everything else constant? bge-base has 109M parameters and 768-dimensional vectors, against bge-small's 33M and 384 dimensions. It improved AllGold@10 by 2.6 points, from 18.6% to 21.2%, which is meaningful but modest. MRR actually dropped slightly, which suggests the larger model finds more evidence overall but ranks it a little less consistently at the top. For 3x the parameters and a trivial latency cost, the gain is real but not transformative.
+
+The interesting part is that this upgrade looks underwhelming here and pays off much later. When the full stack is in place, moving from bge-small to bge-large adds another 2.7 points on top of an already strong pipeline, because the larger model keeps gold facts from falling outside the first-stage candidate pool before the reranker ever sees them.
+
+## The surprise: BM25 alone beats dense
+
+This was the biggest surprise of the whole sequence. The expectation for switching to BM25-only retrieval was that keyword matching would score below the dense baseline, since it shouldn't generalize as well as semantic embeddings. The expectation was wrong. BM25 alone reached 30.7% AllGold@10, a 12.1-point jump over dense, at the same latency.
+
+The reason ties back to the dataset. The gold facts are verbatim strings, and BM25 matches on exact keywords and rare named entities directly, while a dense model generalizes semantically and can retrieve a passage that is about the same topic without containing the precise fact, which is a miss under substring evaluation. News articles are also entity-heavy, full of company names, people, dates, and figures, and those are exactly the rare high-information tokens that dominate the BM25 score and that dense embeddings smooth over. This result changed the direction of the experiments. The next steps were no longer about making dense retrieval better, but about combining BM25's lexical precision with dense retrieval's semantic coverage.
+
+## Hybrid retrieval
+
+If BM25 alone beats dense, and dense adds semantic coverage that BM25 misses, combining them should beat either one. The hybrid retriever runs both methods, fetches 50 candidates each, and merges the ranked lists with Reciprocal Rank Fusion before returning the top 10. RRF scores each chunk as the sum of 1 / (60 + rank) across every list it appears in, and the constant 60 dampens the advantage of being rank 1, so a chunk that lands at rank 2 in both lists usually beats one at rank 1 in only one list, with no score normalization needed across the two methods.
+
+Hybrid reached 33.3% AllGold@10, up 14.8 points over the baseline, beating both individual methods. The gain over BM25 alone comes from dense retrieval rescuing the cases where BM25 fails, the semantically phrased questions where the gold fact uses different vocabulary than the query. At 43ms it was also the best speed-to-quality tradeoff so far, and it became the configuration everything after was built on.
+
+## Rerankers, and the MiniLM trap
+
+A cross-encoder reranker sees the query and each candidate chunk together, with full attention across both, and produces a more accurate relevance score than the bi-encoder similarity used for first-stage retrieval. bge-reranker-base on dense retrieval brought AllGold@10 from 18.6% to 31.7% and MRR from 0.50 to 0.68. It is excellent at ordering, pushing gold-fact chunks to the very top. The cost is latency, which jumped from 17ms to 2,835ms.
+
+The cautionary tale was MiniLM-L6, which is 12x smaller and about 4x faster at 720ms. Tested on hybrid retrieval, it didn't just degrade, it collapsed, dropping AllGold@10 from 33.3% all the way to 17.1%, below the dense baseline. MiniLM was trained on MS MARCO for single-passage ranking, and multi-hop questions require distinguishing between chunks that each hold part of a distributed evidence chain. A shallow 6-layer model lacks the capacity to reason about that, so it deprioritizes chunks that look like partial context and surfaces chunks that look like complete single-hop answers, which is exactly the wrong instinct for this dataset. Smaller and faster is not free.
+
+## Query decomposition
+
+A multi-hop question like "which company did the CEO of X found before joining X?" has sub-questions embedded in it, and issuing them separately gives each sub-topic its own retrieval budget, instead of one query competing for all 10 slots in the context window. Claude Haiku is forced through tool-use to split the question into up to 4 self-contained sub-questions, and the decompositions are cached to disk by question MD5 so repeat runs don't re-call Bedrock.
+
+The result was unexpected: decomposition plus hybrid, with no reranker, performs worse than plain hybrid, 29.9% against 33.3%. FactRecall@10 actually improves, because the sub-questions surface more individual facts from across the corpus, but AllGold@10 drops. The merged pool of candidates from N sub-questions is diverse but noisy, and without a reranker scoring them against the original question, the final top-10 gets polluted with chunks that answer individual sub-questions but don't together make up complete evidence for the original. Decomposition widens the candidate pool. It needs a reranker to select from that pool, which is why the two are designed to work together.
+
+## The full stack
+
+The final experiments combined every component that had shown positive signal on its own, added incrementally, and three findings stand out.
+
+First, decomposition and the reranker are a genuine combination, not just additive. Decomposition alone was -3.4 points versus hybrid, and the reranker alone was +13.1 points versus baseline, but decomposition plus reranker on hybrid reaches +18.5 points, which is +4.5 beyond the reranker alone. Decomposition gives the reranker a wider and better pool to choose from.
+
+Second, the bge-large upgrade matters most at the top of the stack. On its own, earlier, bge-base gave +2.6 points. bge-large inside the full stack gives a similar +2.7 points, but on top of a 37.1% base rather than an 18.6% one, because it stops gold facts from dropping out of the first-stage pool before the reranker can act on them.
+
+Third, BM25 still contributes even with a large embedding model. Within the full stack, dense-only reaches 34.1% while hybrid reaches 39.8%, so BM25 adds 5.7 points even when the embedding model is large. Lexical and semantic signals stay complementary at every model size tested.
+
+The best configuration, decomposition plus hybrid plus bge-reranker plus bge-large, reached 39.8% AllGold@10, up 21.2 points over the baseline, at 2,663ms.
+
+## Iterative retrieval
+
+The last experiment before the agentic approach was IRCoT, which interleaves retrieval with reasoning across multiple iterations. It reached 23.5% AllGold@10, up 4.9 points over the baseline, but at 8,115ms it was the slowest run of all and still fell well short of the full stack's 39.8%. Iterating on its own, without the hybrid-plus-reranker machinery underneath, was not enough, which is part of what motivates the agentic experiment that comes next.
+
+## The full picture
+
+| Experiment | Hits@10 | AllGold@10 | Δ vs baseline | MRR@10 | MAP@10 | Latency |
+| --- | --- | --- | --- | --- | --- | --- |
+| Baseline (dense, bge-small, k=10) | 82.6% | 18.6% | +0.0pp | 0.5008 | 0.2384 | 17ms |
+| top_k = 3 | 59.9% | 4.5% | -14.0pp | 0.4602 | 0.2047 | 17ms |
+| top_k = 5 | 69.7% | 8.0% | -10.6pp | 0.4833 | 0.2211 | 16ms |
+| top_k = 20 | 82.6% | 18.6% | +0.0pp | 0.5090 | 0.2503 | 17ms |
+| top_k = 50 | 82.6% | 18.6% | +0.0pp | 0.5107 | 0.2557 | 18ms |
+| chunk_size = 128 | 72.0% | 14.0% | -4.5pp | 0.3812 | 0.1848 | 19ms |
+| chunk_size = 256 | 78.0% | 18.6% | +0.0pp | 0.4626 | 0.2238 | 17ms |
+| bge-base-en-v1.5 (109M) | 85.6% | 21.2% | +2.7pp | 0.4877 | 0.2350 | 20ms |
+| Sparse only (BM25) | 89.8% | 30.7% | +12.1pp | 0.6207 | 0.3153 | 20ms |
+| Hybrid (Dense + BM25, RRF) | 90.9% | 33.3% | +14.8pp | 0.6131 | 0.3089 | 43ms |
+| Dense + bge-reranker-base | 90.5% | 31.7% | +13.2pp | 0.6829 | 0.3483 | 2835ms |
+| Hybrid + MiniLM reranker | 82.2% | 17.1% | -1.5pp | 0.5561 | 0.2628 | 720ms |
+| Decomp + Hybrid (no reranker) | 89.8% | 29.9% | +11.4pp | 0.4881 | 0.2474 | 1719ms |
+| Decomp + Hybrid + bge-reranker | 91.3% | 37.1% | +18.6pp | 0.6806 | 0.3540 | 2321ms |
+| Decomp + Hybrid + bge-large + reranker | 92.0% | 39.8% | +21.2pp | 0.6883 | 0.3570 | 2663ms |
+| Decomp + Dense + bge-large + reranker | 90.9% | 34.1% | +15.5pp | 0.6824 | 0.3489 | 2382ms |
+| IRCoT (iterative retrieval) | 84.1% | 23.5% | +4.9pp | 0.6301 | 0.3180 | 8115ms |
+
+From 18.6% to 39.8% on AllGold@10, the path was not the one I expected going in. The window size didn't matter, smaller chunks hurt, the lexical baseline I assumed would lose turned out to be the biggest single jump, and the components that looked weak alone, decomposition, the embedding upgrade, only paid off once they were stacked. That sets up the last question: what does an agentic retriever, one that decides its own next move, do on top of all this?

@@ -2,8 +2,7 @@
 title: "Setup"
 date: "2026-06-30T12:00:00"
 project: "rag-on-rails"
-tags: ["RAG", "MultiHop-RAG", "ChromaDB", "Embeddings", "YAML", "Pydantic", "Controlled Experiments"]
-summary: "How I structured the RAG pipeline as a controlled experiment, one variable at a time, with YAML configs, Pydantic validation, and a naming convention that makes the scorecard self-explanatory."
+summary: "How I structured the RAG pipeline as a controlled experiment, changing one variable at a time, with YAML configs validated by Pydantic, a ChromaDB vector store that persists to disk across runs, and a file naming convention that makes every scorecard result self-explanatory without reading any code."
 ---
 
 Coming to the setup, I wanted to build it in such a way that if I vary a single variable, like chunk size, I should be able to see the effect it has on the metrics while keeping everything else the same. That way I can figure out how different configurations and strategies in a RAG pipeline affect its overall metrics. That was the idea.

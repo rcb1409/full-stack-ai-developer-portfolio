@@ -2,8 +2,7 @@
 title: "Building a Production ReAct Agent on Gemini 2.5 Flash"
 date: "2026-03-18"
 project: "vitalsync"
-tags: ["Agents", "ReAct", "Gemini", "LLM Ops"]
-summary: "How I wired up a 4-tool ReAct loop on Gemini 2.5 Flash, classified semantic vs. system errors to avoid retry storms, and built an LLM-as-judge eval suite that caught regressions before users did."
+summary: "How I wired up a 4-tool ReAct loop on Gemini 2.5 Flash, built a classifier that separates semantic errors from system failures to avoid retry storms, and put together an LLM-as-judge eval suite that caught regressions before users ever saw them."
 ---
 
 When I started VitalSync, I thought the hard part would be the AI. It wasn't. The hard part was making it *reliable* — knowing when the model was confused versus when a downstream API was down, and being able to prove the agent was still answering well after every change.

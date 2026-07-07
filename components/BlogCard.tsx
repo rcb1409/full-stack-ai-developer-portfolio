@@ -31,19 +31,9 @@ export default function BlogCard({ post }: { post: BlogPostMeta }) {
       </h3>
 
       {/* Summary */}
-      <p className="text-sm text-slate-500 leading-relaxed line-clamp-2 mb-4">{post.summary}</p>
+      <p className="text-sm text-slate-500 leading-relaxed line-clamp-4 mb-4">{post.summary}</p>
 
-      {/* Tags */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {post.tags.map((tag) => (
-          <span
-            key={tag}
-            className="px-2.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-wider rounded-full"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
+
 
       {/* CTA */}
       <div className="mt-auto flex items-center gap-1 text-sm font-semibold text-red-600 group-hover:gap-2 transition-all">

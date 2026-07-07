@@ -1,0 +1,51 @@
+---
+title: "The Baseline"
+date: "2026-07-07T12:00:00"
+project: "rag-on-rails"
+summary: "Dense retrieval with BGE embeddings and a 450-token chunk size is the starting point every later experiment is measured against. The scorecard shows the retriever finds the first gold fact easily but consistently misses the bridging evidence that multi-hop questions depend on."
+---
+
+The baseline uses dense retrieval only, with the BGE embedding model and the chunking configuration described below. All experiments were conducted on the dev set, a stratified sample of 300 questions across the three question types.
+
+## Why BGE
+
+BGE, the BAAI General Embedding family, is trained explicitly for retrieval, including the asymmetric case where a short query has to match a long passage that never uses the same words. It ranks competitively on the MTEB retrieval benchmark specifically, which is a better proxy for what this pipeline needs than a general semantic similarity leaderboard.
+
+## Chunking
+
+Chunking is the step that turns 609 articles into the units the retriever actually works with. The baseline uses `RecursiveCharacterTextSplitter` from `langchain-text-splitters`, just the splitter, not the LangChain framework. Two parameters do most of the work.
+
+**chunk_size is 450 tokens.** BGE has a hard limit of 512 tokens, and anything beyond that is silently truncated during embedding, so the resulting vector only represents the first 512 tokens and the tail of the text becomes invisible to retrieval. The catch is that the counting is done with `tiktoken` (the `cl100k_base` vocabulary), and `tiktoken` and BGE tokenize differently, so a chunk that `tiktoken` counts as 450 tokens might come out to 490 or more inside BGE. Setting the size to 450 leaves roughly 12% headroom to absorb that mismatch, and the chunker logs a warning for any chunk that gets close to the danger zone, so the problem is visible rather than silent.
+
+**chunk_overlap is 50 tokens.** The last 50 tokens of each chunk are repeated at the start of the next one. This matters because evidence sentences don't respect chunk boundaries: a golden fact that spans the end of one chunk and the start of the next would be split and invisible to retrieval without overlap. Fifty tokens covers most sentence-boundary cases without making the chunks substantially redundant.
+
+After chunking, the 609 articles become 3,874 chunks, roughly 6.4 chunks per article.
+
+## The baseline scorecard
+
+| Metric | Score | What it says |
+| --- | --- | --- |
+| Hits@4 | 0.6667 | 67% of questions had at least one gold fact in the top 4 |
+| Hits@10 | 0.8258 | 83% had at least one gold fact in the top 10 |
+| FactRecall@4 | 0.3261 | 33% of individual gold facts present in the top 4 |
+| FactRecall@10 | 0.4814 | 48% of individual gold facts present in the top 10 |
+| AllGold@4 | 0.0720 | Only 7% of questions had all their evidence in the top 4 |
+| AllGold@10 | 0.1856 | Only 19% of questions had complete evidence chains in the top 10 |
+| MRR@10 | 0.5008 | First hit arrives around rank 2 on average |
+| MAP@10 | 0.2384 | Weighted precision across all gold facts, low, reflecting missing bridging evidence |
+
+## What the numbers say
+
+The baseline numbers are worth sitting with before moving on to any experiment, because they tell you exactly where the problem is.
+
+Hits@10 looks decent and AllGold@10 looks bad, and both are correct. 83% of questions had at least one golden fact in the top 10, which sounds like the retriever is mostly working. But only 19% had all of their golden facts in the top 10, which means that for 4 out of every 5 questions the generator is missing at least one piece of evidence it needs to answer correctly.
+
+That gap is the structural challenge of multi-hop retrieval. The first golden fact is usually semantically close to the question, so dense retrieval finds it easily. The second and third facts are often in a different article, connected to the question through an intermediate entity that never appears in the query's surface form, and dense retrieval with no multi-hop reasoning doesn't know to look there. FactRecall@10 of 0.48 is the honest summary of this: the retriever finds roughly half of the total golden facts, with single-hop questions pulling the average up and multi-hop questions dragging it down.
+
+MRR@10 of 0.50 rules out one explanation. When the retriever does find a relevant chunk, it tends to find it near the top, around rank 2 on average. So the problem isn't that relevant chunks are being retrieved and buried. It's that the additional relevant chunks for multi-hop questions aren't being retrieved at all.
+
+## Testing chunk size
+
+The next thing I played with was chunk size, to see whether a different token count would give better metrics. Since the model tops out at 512 tokens, I started at 450 and then tested 256 and 128 as well. Both came out below the base, though for 256 the difference was not that much.
+
+I still kept 256 as a candidate anyway. Even though its retrieval metric is slightly lower, a smaller chunk means the generation LLM gets a more focused context, so generation might actually come out better. The counter-worry is that 256 tokens might not be enough to carry the surrounding information around a fact. That is not clear yet, so I decided to keep tracking 256 alongside the base into the next experiments.

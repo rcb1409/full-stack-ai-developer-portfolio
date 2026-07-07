@@ -1,0 +1,83 @@
+---
+title: "One Question, Three Systems"
+date: "2026-07-09T12:00:00"
+project: "rag-on-rails"
+summary: "The analytical posts in this series measured aggregate metrics across hundreds of questions. This one does the opposite: it traces a single question through the baseline, the best static pipeline, and the agentic system, showing exactly which chunks each one retrieved, which gold facts each one found, and why the gap exists."
+---
+
+The analytical posts in this series measured aggregate metrics across hundreds of questions. This one does the opposite: it traces a single question through all three systems, showing exactly which chunks each one retrieved, which gold facts each one found, and why the gap exists.
+
+## The question
+
+The question is a temporal consistency check about the Taylor Swift and Travis Kelce coverage, asking whether an October 12 CBSSports report, a November 25 report from The Independent, and a December 6 report from The Independent were consistent with each other. Its type is `temporal_query` and the gold answer is "Yes." To answer it correctly, the retriever has to surface specific passages from all three articles, published across two months.
+
+## The gold facts
+
+These are the exact verbatim sentences the dataset defines as supporting evidence. A system scores on this question only if these strings appear as substrings in the retrieved chunks.
+
+| # | Gold fact | Source |
+| --- | --- | --- |
+| 1 | "On his podcast, he later invited the 'Anti-Hero' singer to one of his games at Arrowhead Stadium, an invitation she famously accepted on 24 September." | The Independent, Nov 25 |
+| 2 | "The game is taking place at Arrowhead Stadium, where Swift has performed herself and attended a game before." | CBSSports.com, Oct 12 |
+| 3 | "Now, Swift has shared that she has nothing to hide in her new relationship with Kelce." | The Independent, Dec 6 |
+
+The important structural detail: Gold Facts 1 and 3 come from two different Independent articles published six weeks apart, while Gold Fact 2 comes from the CBSSports piece. Each fact lives in a distinct chunk, and no single chunk contains more than one.
+
+## System 1: Baseline
+
+Dense retrieval, bge-small, top_k=10, no reranker. Result: 1 of 3 gold facts found, FactRecall@10 = 0.33.
+
+| Rank | Chunk | Gold? | Content |
+| --- | --- | --- | --- |
+| 1 | `b9ea594bcdf2_0002` | | Kelce's Sept 21 invitation announcement on The Pat McAfee Show |
+| 2 | `b0ff0a29e4b1_0002` | | Swift's Oct 22 return to Arrowhead, relationship-confirmation context |
+| 3 to 7 | various | | Postgame press conference, fan reactions, friendship-bracelet story |
+| 8 | `5e218df7561d_0002` | **Gold Fact 1** | The Nov 25 podcast-invitation sentence |
+| 9 to 10 | various | | Unrelated Swift/Kelce background |
+
+Gold Fact 2 (Oct 12 CBSSports) and Gold Fact 3 (Dec 6 Independent) are not retrieved at all. The query contains "Arrowhead Stadium," "Travis Kelce," and "Taylor Swift," terms that appear across dozens of chunks about this relationship, so dense retrieval surfaces the most topically similar content with no notion of which articles are relevant to the specific dates in the question. The one gold fact it does find arrives at rank 8, buried under six non-gold chunks. The October and December articles have their own vocabulary and never rise to the top.
+
+## System 2: Best static pipeline
+
+Query decomposition (Claude Haiku, up to 4 sub-questions), hybrid retrieval (dense + BM25 + RRF), bge-reranker-base, bge-large, top_k=10. Result: 2 of 3 gold facts found, FactRecall@10 = 0.67.
+
+| Rank | Chunk | Gold? | Content |
+| --- | --- | --- | --- |
+| 1 | `a0681cf0efcb_0000` | | Independent newsletter header |
+| 2 | `b0ff0a29e4b1_0002` | | Swift's Oct 22 return to Arrowhead |
+| 3 | `f62eb7dc121e_0003` | | CBSSports postgame coverage |
+| 4 | `8779a22b54d2_0001` | **Gold Fact 3** | The Dec 6 relationship-confirmation sentence |
+| 5 | `5e218df7561d_0002` | **Gold Fact 1** | The Nov 25 podcast-invitation sentence |
+| 6 to 10 | various | | Timeline and invitation background |
+
+Gold Fact 2 is still not retrieved. Decomposition generated sub-questions targeting the November 25 and December 6 articles specifically, which is why Gold Facts 1 and 3 surface at ranks 4 and 5, with the reranker promoting both to the top of the list. But the October 12 sentence is a mid-article timeline entry inside a long chronological CBSSports piece. The sub-question aimed at the October Arrowhead context pulled other chunks from the same article without surfacing that specific sentence, so chunk `f62eb7dc121e_0006` never even entered the top 50 candidates. Note that the article's `_0003` chunk did rank, while the `_0006` chunk holding the gold fact did not. Same article, different chunk.
+
+## System 3: Agentic RAG
+
+Hybrid retrieval, bge-reranker-base, top_k=10, iterative loop (max 3), Claude Sonnet as generator and Claude Haiku as judge. Result: 3 of 3 gold facts found, 2 iterations, 13 total chunks.
+
+**Iteration 1.** The system issues the original question, and the first pass returns 10 chunks, including Gold Facts 1 and 3 at ranks 5 and 4, the same two the static pipeline found. The generator drafts a partial answer: the relationship is consistent across the November 25 and December 6 reports. The judge returns INSUFFICIENT, because the October 12 CBSSports report about Arrowhead has not been confirmed by the accumulated facts. It generates three follow-up queries:
+
+1. `Taylor Swift Arrowhead Stadium October 12 2023 Chiefs Broncos game CBSSports` (keyword-rich)
+2. `What did CBSSports report about Taylor Swift at Arrowhead Stadium on October 12 2023?` (natural language)
+3. `Swift Kansas City Chiefs game October 2023 Arrowhead performance attendance` (alternative phrasing)
+
+**Iteration 2.** The three queries run in parallel against the hybrid retriever, and the merged results include chunk `f62eb7dc121e_0006`, the CBSSports timeline section covering October 12, which contains Gold Fact 2. The generator incorporates the fact, and the judge reviews all three accumulated gold facts and declares SUFFICIENT. The final answer confirms the relationship was consistently reported across all three dates.
+
+## Side by side
+
+| | Baseline | Best Static | Agentic |
+| --- | --- | --- | --- |
+| Gold Fact 1 (Nov 25) | Found, rank 8 | Found, rank 5 | Found, iter 1 |
+| Gold Fact 2 (Oct 12) | Not found | Not found | Found, iter 2 |
+| Gold Fact 3 (Dec 6) | Not found | Found, rank 4 | Found, iter 1 |
+| FactRecall | 33% (1/3) | 67% (2/3) | 100% (3/3) |
+| Chunks retrieved | 10 | 10 | 13 |
+| Iterations | 1 | 1 | 2 |
+| Latency | ~17ms | ~2,700ms | ~35,000ms |
+
+## Why the gap exists
+
+The three systems fail and succeed for reasons that line up with everything the aggregate experiments showed. The baseline cannot tell topical similarity from date-specific relevance, so high-frequency names pull in general relationship coverage and the specific dated passages never surface. The static pipeline can target the dates it can actually see in the question, which is why it finds two of the three, but it has no way to surface a passage buried mid-article when no sub-question is specific enough to rank it over the article's other chunks.
+
+The agentic system closes the gap for one reason: after iteration 1, the judge knows exactly what is missing, the October 12 Arrowhead event from CBSSports, and writes a keyword query naming the date, the stadium, and the source. That query is specific enough that BM25 pulls the right chunk as a top result, even though the same chunk would never have ranked on a semantic query. The extra iteration costs 3 chunks and about 25 seconds, which is the same tradeoff the aggregate numbers describe, paid here for a single fact.

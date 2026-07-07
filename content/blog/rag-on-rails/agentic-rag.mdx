@@ -1,0 +1,86 @@
+---
+title: "Agentic RAG"
+date: "2026-07-09T12:00:00"
+project: "rag-on-rails"
+summary: "Every prior experiment used a static pipeline: one query in, a fixed number of chunks out. The agentic loop replaces that with iterative, evidence-grounded retrieval and pushes AllGold from 39.8% to 49.2%, at 14x the latency."
+---
+
+Every experiment up to this point changed one component of a pipeline that was fundamentally static: one query goes in, a fixed number of chunks come out, and the generator answers from whatever it received. The best that architecture ever reached was AllGold@10 = 39.8%, which means that for 60% of multi-hop questions at least one piece of supporting evidence was still missing from the context. The question the experiments left open was whether that ceiling is structural, or whether a different approach could move it.
+
+## What decomposition revealed
+
+The clue was already in the decomposition results. Splitting a multi-hop question into sub-questions and retrieving each one improved FactRecall, because more individual facts were found, but AllGold@10 didn't always improve to match. The reason is that decomposition generates all of its sub-questions upfront, before any retrieval has happened. Sub-question 2 doesn't know what sub-question 1 found, and every sub-question is written from the original question text alone, with no grounding in what the corpus actually contains.
+
+Take a question like "which company did the CEO of X found before joining X, and how did that company later affect X's strategy?" The first sub-question can retrieve who the CEO is. But to find out what company they founded, you have to search on that person's name, and their name is not in the original question. Decomposition can't write that sub-question, because at generation time it doesn't know the name yet. That is the structural limitation, and it points straight at the fix: if retrieval at each step is informed by what the previous step found, the system can follow the evidence chain instead of guessing it upfront.
+
+## Static versus iterative
+
+The difference is where the follow-up query comes from. In decomposition, the LLM writes all its sub-questions from the question, issues them independently, merges the results with RRF, reranks against the original question, and sends the top 10 to the generator. Every sub-question is written blind. In the agentic loop, iteration 2's query is written from the facts found in iteration 1, so a follow-up can name intermediate entities the original question never mentioned, because the system has already retrieved them.
+
+The retrieval layer itself didn't change. The agentic pipeline sits on top of the best static stack, hybrid retrieval (dense + BM25 + RRF) with bge-reranker-base, and adds an iterative generation loop on top. What changed is how the question is presented to that retriever over time.
+
+The loop runs like this:
+
+1. **Initial retrieval.** The hybrid retriever fetches the top 10 chunks for the original question.
+2. **Fact extraction and draft.** The generator (Claude Sonnet, forced tool call) reads the new chunks alongside the facts accumulated from prior iterations, extracts new facts, and drafts its best current answer.
+3. **Sufficiency judgment.** The judge (Claude Haiku, forced tool call) reads the original question and all accumulated facts, checks each claim independently, and outputs either is_sufficient or three new queries.
+4. **Next retrieval.** If insufficient, the three follow-up queries run in parallel against the hybrid retriever, and the results are merged and deduplicated.
+5. **Loop or stop.** Repeat from step 2, up to three total iterations, stopping when the judge is satisfied or the cap is hit.
+
+When the judge needs more evidence, it deliberately writes three different queries for the same gap: a keyword-rich one full of entity names and dates to feed BM25, a natural-language question to feed dense retrieval, and an alternative phrasing to hedge against vocabulary mismatch. All three run at once, and the results are deduplicated by chunk ID and capped at 15 chunks, so both halves of the retriever get exercised.
+
+## Why the generator can't judge itself
+
+The most deliberate design decision here is splitting the generator and the judge into two models with two roles. A single model asked to both answer a question and assess whether it has enough evidence tends to declare sufficiency too early. It has parametric knowledge baked in from training, so it can produce a confident-sounding answer even when the retrieved context is incomplete. The answer feels correct to the model. It just can't actually attribute it to the provided documents.
+
+So the roles are separated. The generator is allowed to draft partial answers and is prompted to note what is missing, and that partial answer feeds the judge, not the user. The judge sees only the original question and the accumulated fact list, not the raw chunks. It breaks the question into individual claims and checks each one against the facts, requiring facts about both entities for a comparison and facts from all sources for an inference, then emits a structured verdict through a forced tool call: which claims are supported, whether all of them are (is_sufficient), a short reason, and three follow-up queries if not.
+
+The model choice follows the task shape. The judge's job is structured and constrained, checking a list of claims and returning a boolean, which Haiku handles well at roughly 4x lower cost per call. The generator's job is open-ended, reasoning over mixed context and drafting a coherent partial answer, which is worth Sonnet. I tested this with a smoke test first, and the results showed the LLM getting confused when given two jobs at once, the judge and the query generator, so I split them into two separate calls.
+
+## Results
+
+The dev run scored 264 questions, excluding the 35 null_query questions, which have no supporting evidence by design. Because the agentic system accumulates chunks across multiple iterations rather than producing a single ranked list of 10, applying a @10 cutoff would arbitrarily penalize it for doing more retrieval. The only fair comparison is coverage measured across all the chunks each system actually retrieved.
+
+| Metric | Best static (10 chunks) | Agentic (15.7 avg) | Delta |
+| --- | --- | --- | --- |
+| AllGold, all retrieved | 39.8% | 49.2% | +9.4pp |
+| FactRecall, all retrieved | 66.5% | 72.2% | +5.7pp |
+| Avg chunks to generator | 10 | 15.7 | +5.7 chunks |
+| Avg latency per question | 2.7s | 38.8s | 14x slower |
+| Bedrock calls per question | ~5 | ~6 to 12 | 2 to 3x more |
+
+Coverage clearly improves. The iterative loop is doing real work, and the follow-up queries surface evidence the first query missed. Across the run, 57% of questions resolved in a single pass, 20% needed one follow-up, and 23% hit the three-iteration cap still unsatisfied.
+
+## Where it works and where it doesn't
+
+The system is uneven across question types, and the breakdown is the interesting part.
+
+| Question type | n | FactRecall | Judge satisfied | Avg iterations | Avg latency |
+| --- | --- | --- | --- | --- | --- |
+| comparison | 100 | 73.8% | 50% | 1.81 | 40.8s |
+| inference | 96 | 55.1% | 56% | 1.31 | 27.3s |
+| temporal | 68 | 62.3% | 18% | 1.94 | 47.0s |
+| null | 35 | — | 3% | 2.94 | 49.0s |
+
+**Comparison queries are the biggest winner.** They name two or more entities and ask whether they differ, which fits the judge perfectly: it can see that facts about entity A are present but entity B is missing, and write a targeted follow-up for B by name. FactRecall reaches 73.8% and half the questions are fully resolved, the highest of any type.
+
+**Inference queries are the structural gap.** They average only 1.31 iterations and land at AllGold@10 = 18.8%, essentially identical to the plain dense baseline. The judge tends to declare sufficiency after the first iteration, because the generator's partial answer sounds complete, and inference questions often require connecting facts that share no obvious entity overlap, which the claim-check framework struggles to flag as missing. It does work sometimes: for "which company is at the center of allegations involving potential foul play, antitrust issues with a video game maker, and the siphoning of news publishers' content?" (the answer is Google), the system ran all three iterations and assembled facts about Google in each category before the judge was satisfied. That is exactly the kind of question the loop is supposed to help with.
+
+**Null queries are the cost leak.** They have no supporting evidence anywhere, so the judge correctly marks them insufficient, generates follow-ups that also return nothing, and marks them insufficient again, burning about 49 seconds per question to conclude "I don't know." A static pipeline reaches the same conclusion in 43ms. The loop needs an early-exit path that recognizes when evidence is structurally absent rather than just not found yet.
+
+## What it cost
+
+| Cost driver | Static best | Agentic | Multiple |
+| --- | --- | --- | --- |
+| Latency per question | 2.7s | 38.8s | 14x |
+| Bedrock calls per question | ~5 | ~6 to 12 | 2 to 3x |
+| Full 1,500-question run | ~1.1h | ~16.2h | 15x |
+| Chunks to generator | 10 | 15.7 | 1.6x |
+
+So the hypothesis holds. Iterative, evidence-grounded retrieval does improve coverage on multi-hop questions, by 9.4 points of AllGold. But it comes with a cost structure that makes naive deployment impractical: 14x the latency and up to three times the model calls.
+
+## What's left
+
+Two of the problems have clear fixes. The null-query leak needs a signal that distinguishes "not found yet" from "doesn't exist," either a classifier before the loop starts or a judge signal after the first iteration, which would remove the 49-second waste on unanswerable questions. The inference gap needs the judge to be explicitly prompted to verify source attribution for every claim, not just the factual content, since right now it approves incomplete inference answers too readily.
+
+The obvious next move would be to measure generation quality, the Exact Match, Token F1, and ragas faithfulness and correctness scores. But that is not the right next step yet, and the reason goes back to why retrieval was measured first in the first place. Generation quality is bounded by retrieval quality. At an AllGold of around 50%, roughly half the questions still don't have their complete evidence in the context, and there is little point asking whether the LLM can generate a good answer when the information it would need isn't even there to generate from. The goal of this project is to improve the retrieval metrics, and until that number is meaningfully higher, generation scores would mostly be measuring the holes left by retrieval rather than anything about the generator. So the direction from here stays on retrieval, closing the null-query and inference gaps and finding whatever the next lever is that pushes complete-evidence coverage past where the agentic loop leaves it. That is still an open question.
