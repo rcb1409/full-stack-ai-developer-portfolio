@@ -21,18 +21,18 @@ export const PROJECTS: Project[] = [
     tags: ['React', 'Express', 'TypeScript', 'Prisma', 'AWS', 'Terraform', 'Gemini 2.5 Flash', 'Helicone'],
     liveUrl: 'https://vitalsync.ravibollepalli.me/',
   },
-  
-    {
-      slug: 'rag-on-rails',
-      title: 'RAG-on-Rails: Controlled-Experiment RAG Benchmark',
-      description:
-        'From-scratch RAG benchmark with a single-variable harness across 10 ablations on MultiHop-RAG, lifting Recall@5 from 0.52 to 0.81 and answer correctness from 0.49 to 0.72.',
-      longDescription:
-        'Built a from-scratch RAG benchmarking pipeline with a controlled-experiment harness that isolates one variable at a time across 10 ablations on MultiHop-RAG (2,556 questions). Lifted Recall@5 from 0.52 to 0.81 using hybrid dense + BM25 retrieval, a cross-encoder reranker, and LLM-based query decomposition. Raised answer correctness from 0.49 to 0.72, measured by a 12-metric RAGAS suite that separates retrieval quality from generation quality, with a Claude Sonnet judge and tracing via Arize Phoenix.',
-      imageFile: '/projects/rag-on-rails-cover.svg',
-      tags: ['Python', 'BM25', 'Dense Retrieval', 'Cross-Encoder Reranker', 'RAGAS', 'Arize Phoenix', 'Claude Sonnet', 'MultiHop-RAG'],
-      liveUrl: 'https://ragonrails/ravibollepalli/rag-on-rails',
-    },
+
+  {
+    slug: 'rag-on-rails',
+    title: 'RAG-on-Rails: Controlled-Experiment RAG Benchmark',
+    description:
+      'From-scratch RAG benchmark with a single-variable harness across 30 experiments on MultiHop-RAG, lifting complete-evidence retrieval (AllGold@10) from 18.6% to 49.2% via hybrid search, reranking, and an agentic retrieve-judge-refine loop.',
+    longDescription:
+      'Built a from-scratch RAG benchmarking pipeline with a controlled-experiment harness that isolates one variable at a time across 30 experiments (9 pipeline components) on a stratified dev set from MultiHop-RAG. Lifted complete-evidence retrieval (AllGold@10) from an 18.6% dense baseline to 49.2% using hybrid dense + BM25 retrieval with reciprocal rank fusion, a cross-encoder reranker, LLM query decomposition, and an agentic retrieve-judge-refine loop (Sonnet generates, Haiku judges). Scored every run with a deterministic, LLM-judge-free eval harness using verbatim golden-fact matching and custom metrics (AllGold@k, FactRecall@k, MRR, MAP), keeping results fast and fully reproducible.',
+    imageFile: '/projects/rag-on-rails-cover.svg',
+    tags: ['Python', 'Hybrid Retrieval', 'BM25', 'Dense Retrieval', 'Cross-Encoder Reranker', 'RRF', 'Query Decomposition', 'Agentic RAG', 'ChromaDB', 'MultiHop-RAG'],
+    liveUrl: 'https://ragonrails/ravibollepalli/rag-on-rails',
+  },
   {
     slug: 'miniclaw',
     title: 'MiniClaw: Self-Hosted AI Agent',
